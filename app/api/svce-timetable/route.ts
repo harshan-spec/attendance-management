@@ -132,7 +132,7 @@ export async function GET(request: Request) {
 
       return new Response(pdfBytes, {
         headers: {
-          "Cache-Control": "public, max-age=600, s-maxage=900, stale-while-revalidate=3600",
+          "Cache-Control": "no-store, max-age=0",
           "Content-Disposition": `inline; filename="${pdfUrl.pathname.split("/").at(-1)}"`,
           "Content-Length": String(pdfBytes.byteLength),
           "Content-Type": "application/pdf",

@@ -675,7 +675,7 @@ function TimetableView({
   }
 
   useEffect(() => {
-    if (!academicProfile || !academicProfile.collegeTimetableUrl) {
+    if (!academicProfile) {
       setCollegePdf({ status: "unavailable", images: [], message: "No matching college timetable was found. Your editable weekday timetable is still available below." });
       return;
     }
@@ -689,9 +689,14 @@ function TimetableView({
       studyYear: String(academicProfile.studyYear),
       semester: String(academicProfile.semester),
       section: academicProfile.sectionCode,
+      attempt: String(collegeRefresh),
     });
 
-    setCollegePdf({ status: "loading", images: [], message: "Fetching your matching college timetable…" });
+    setCollegePdf({
+      status: "loading",
+      images: [],
+      message: collegeRefresh > 0 ? "Refreshing the official college timetable…" : "Fetching your matching college timetable…",
+    });
     fetch(`/api/svce-timetable?${params.toString()}`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         if (!response.ok || !response.headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
@@ -789,7 +794,7 @@ function TimetableView({
         <div><span className="college-timetable-eyebrow">OFFICIAL SVCE TIMETABLE</span><h2>College timetable · original PDF</h2><p>{academicProfile.department} · {getStudyYearLabel(academicProfile.studyYear)} · Semester {academicProfile.semester} · {academicProfile.section} · {academicProfile.academicYear}</p></div>
         <div className="college-timetable-actions">
           {academicProfile.collegeTimetableUrl && <a className="button button-quiet" href={academicProfile.collegeTimetableUrl} target="_blank" rel="noreferrer">Source PDF <Icon name="external"/></a>}
-          <button className="button button-quiet" onClick={() => setCollegeRefresh((refresh) => refresh + 1)} disabled={collegePdf.status === "loading" || !academicProfile.collegeTimetableUrl}><Icon name="refresh"/>Refresh</button>
+          <button className="button button-quiet" onClick={() => setCollegeRefresh((refresh) => refresh + 1)} disabled={collegePdf.status === "loading"} aria-label="Refresh official college timetable"><Icon name="refresh"/>{collegePdf.status === "loading" && collegeRefresh > 0 ? "Refreshing…" : "Refresh"}</button>
         </div>
       </div>
       {collegePdf.status === "ready" ? <>
