@@ -1,0 +1,1083 @@
+"use client";
+
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useAttendlyAuth } from "@/lib/auth-context";
+import { afterAttending, afterMissing, classesNeeded, classesThatCanBeMissed, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals } from "@/lib/attendance";
+import { createSampleWorkspace } from "@/lib/sample-data";
+import type { AttendanceRecord, Semester, Subject, TimetableEntry, WorkspaceData, WorkspaceSettings } from "@/lib/types";
+import { getStudyYearLabel, type StudentAcademicProfile } from "@/lib/svce-timetable";
+import { renderTimetablePdfPages } from "@/lib/svce-timetable-render";
+import { createId } from "@/lib/id";
+import { Icon, type IconName } from "@/app/dashboard/Icons";
+
+type ViewKey = "overview" | "subjects" | "attendance" | "calendar" | "timetable" | "planner" | "reports" | "semesters" | "settings";
+type DialogState =
+  | { kind: "attendance"; record?: AttendanceRecord; subjectId?: string; date?: string }
+  | { kind: "subject"; subject?: Subject }
+  | { kind: "semester" }
+  | { kind: "delete-record"; record: AttendanceRecord }
+  | { kind: "archive-subject"; subject: Subject }
+  | null;
+
+const viewMeta: Record<ViewKey, { title: string; subtitle: string; icon: IconName }> = {
+  overview: { title: "Overview", subtitle: "A clear picture of where you stand this semester.", icon: "home" },
+  subjects: { title: "Your subjects", subtitle: "Keep every subject above its 75% attendance floor.", icon: "book" },
+  attendance: { title: "Class history", subtitle: "Every class, with its date, day, periods, and status.", icon: "clock" },
+  calendar: { title: "Calendar", subtitle: "Review recorded attendance by date.", icon: "calendar" },
+  timetable: { title: "Timetable", subtitle: "Plan seven class hours each weekday, Monday through Friday.", icon: "book-open" },
+  planner: { title: "Plan ahead", subtitle: "See what future classes could change before they happen.", icon: "target" },
+  reports: { title: "Semester report", subtitle: "A subject-by-subject summary you can take with you.", icon: "chart" },
+  semesters: { title: "Semesters", subtitle: "Keep current classes and past terms organized.", icon: "layers" },
+  settings: { title: "Settings", subtitle: "Set the attendance floors you want to stay above.", icon: "settings" },
+};
+
+const navItems: { key: ViewKey; label: string; icon: IconName; mobileHide?: boolean }[] = [
+  { key: "overview", label: "Overview", icon: "home" },
+  { key: "subjects", label: "Subjects", icon: "book" },
+  { key: "attendance", label: "Attendance", icon: "clock" },
+  { key: "calendar", label: "Calendar", icon: "calendar" },
+  { key: "timetable", label: "Timetable", icon: "book-open" },
+  { key: "planner", label: "Planner", icon: "target" },
+  { key: "reports", label: "Reports", icon: "chart", mobileHide: true },
+  { key: "semesters", label: "Semesters", icon: "layers", mobileHide: true },
+  { key: "settings", label: "Settings", icon: "settings", mobileHide: true },
+];
+
+function blankWorkspace(academicProfile?: StudentAcademicProfile | null): WorkspaceData {
+  const id = createId();
+  return {
+    semesters: [{ id, name: academicProfile ? `Semester ${String(academicProfile.semester).padStart(2, "0")}` : "My first semester", startDate: dateKey(new Date()), endDate: "", archived: false }],
+    activeSemesterId: id,
+    subjects: [],
+    records: [],
+    timetable: [],
+    settings: { overallTarget: 80, defaultSubjectTarget: 75, theme: "light" },
+  };
+}
+
+function loadPreviewWorkspace(userId: string): WorkspaceData {
+  try {
+    const saved = localStorage.getItem(`attendly-workspace:${userId}`);
+    if (saved) {
+      const parsed = JSON.parse(saved) as WorkspaceData;
+      return { ...parsed, timetable: Array.isArray(parsed.timetable) ? parsed.timetable : [] };
+    }
+  } catch {
+    localStorage.removeItem(`attendly-workspace:${userId}`);
+  }
+  return createSampleWorkspace();
+}
+
+export function DashboardClient() {
+  const router = useRouter();
+  const { user, ready, signOut, enterPreview } = useAttendlyAuth();
+  const [data, setData] = useState<WorkspaceData | null>(null);
+  const [loadedUserId, setLoadedUserId] = useState("");
+  const [workspaceError, setWorkspaceError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [saveStatus, setSaveStatus] = useState<"local" | "saving" | "saved" | "error">("saved");
+  const [view, setView] = useState<ViewKey>("overview");
+  const [dialog, setDialog] = useState<DialogState>(null);
+  const [toast, setToast] = useState("");
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!user) {
+      if (process.env.NODE_ENV === "development" && new URLSearchParams(window.location.search).get("preview") === "1") {
+        enterPreview();
+        return;
+      }
+      router.replace("/login");
+      return;
+    }
+    setData(null);
+    setLoadedUserId("");
+    setWorkspaceError("");
+    if (user.isPreview) {
+      setData(loadPreviewWorkspace(user.id));
+      setLoadedUserId(user.id);
+      setSaveStatus("local");
+      return;
+    }
+
+    let alive = true;
+    fetch("/api/workspace", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { workspace?: WorkspaceData | null; error?: string };
+        if (!response.ok) throw new Error(payload.error || "Your workspace could not be loaded.");
+        if (!alive) return;
+        setData(payload.workspace?.semesters.length ? payload.workspace : blankWorkspace(user.academicProfile));
+        setLoadedUserId(user.id);
+      })
+      .catch((caught: unknown) => {
+        if (alive) setWorkspaceError(caught instanceof Error ? caught.message : "Your workspace could not be loaded.");
+      });
+    return () => { alive = false; };
+  }, [ready, user, router, loadAttempt, enterPreview]);
+
+  useEffect(() => {
+    if (!user || !data || loadedUserId !== user.id) return;
+    if (user.isPreview) {
+      localStorage.setItem(`attendly-workspace:${user.id}`, JSON.stringify(data));
+      setSaveStatus("local");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSaveStatus("saving");
+      try {
+        const response = await fetch("/api/workspace", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspace: data }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Could not sync your changes.");
+        setSaveStatus("saved");
+      } catch {
+        if (!controller.signal.aborted) setSaveStatus("error");
+      }
+    }, 450);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [user, data, loadedUserId]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 3000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const activeSemester = data?.semesters.find((semester) => semester.id === data.activeSemesterId) ?? data?.semesters[0] ?? null;
+  const semesterSubjects = useMemo(
+    () => data?.subjects.filter((subject) => subject.semesterId === activeSemester?.id) ?? [],
+    [data?.subjects, activeSemester?.id],
+  );
+  const currentSubjects = semesterSubjects.filter((subject) => !subject.archived);
+  const currentSubjectIds = new Set(currentSubjects.map((subject) => subject.id));
+  const semesterSubjectIds = new Set(semesterSubjects.map((subject) => subject.id));
+  const activeRecords = (data?.records ?? []).filter((record) => currentSubjectIds.has(record.subjectId));
+  const semesterRecords = (data?.records ?? []).filter((record) => semesterSubjectIds.has(record.subjectId));
+  const totals = getTotals(activeRecords);
+  const missingSubjects = currentSubjects.filter((subject) => {
+    const summary = getSubjectTotals(activeRecords, subject.id);
+    return summary.percentage === null || summary.percentage < subject.requiredAttendance;
+  });
+
+  function notify(message: string) { setToast(message); }
+  function updateData(change: (current: WorkspaceData) => WorkspaceData) {
+    setData((current) => current ? change(current) : current);
+  }
+  function retryWorkspaceSave() {
+    setData((current) => current ? { ...current } : current);
+  }
+  function openAttendance(subjectId?: string, date?: string) {
+    if (!currentSubjects.length) {
+      setDialog({ kind: "subject" });
+      notify("Add a subject before logging a class.");
+      return;
+    }
+    setDialog({ kind: "attendance", subjectId, date });
+  }
+  function quickLog(subjectId: string, status: "present" | "absent") {
+    const subject = currentSubjects.find((entry) => entry.id === subjectId);
+    if (!subject) return;
+    const today = dateKey(new Date());
+    const periods = 1;
+    const existing = data?.records.find((entry) => entry.subjectId === subjectId && entry.date === today);
+    const record: AttendanceRecord = {
+      id: existing?.id ?? createId(),
+      subjectId,
+      date: today,
+      periods,
+      attended: status === "present" ? periods : 0,
+    };
+    updateData((current) => ({ ...current, records: existing
+      ? current.records.map((entry) => entry.id === existing.id ? { ...entry, ...record, note: entry.note } : entry)
+      : [...current.records, record] }));
+    notify(`${status === "present" ? "Present" : "Absent"} saved for ${subject.name} on ${formatDay(today)} (${periods} ${periods === 1 ? "period" : "periods"}).`);
+  }
+  function saveAttendance(record: AttendanceRecord) {
+    updateData((current) => ({
+      ...current,
+      records: dialog?.kind === "attendance" && dialog.record
+        ? current.records.map((entry) => entry.id === record.id ? record : entry)
+        : [...current.records, record],
+    }));
+    setDialog(null);
+    notify(dialog?.kind === "attendance" && dialog.record ? "Attendance record updated." : "Attendance recorded for the selected day.");
+  }
+  function saveSubject(subject: Subject) {
+    updateData((current) => ({
+      ...current,
+      subjects: dialog?.kind === "subject" && dialog.subject
+        ? current.subjects.map((entry) => entry.id === subject.id ? subject : entry)
+        : [...current.subjects, subject],
+    }));
+    setDialog(null);
+    notify(dialog?.kind === "subject" && dialog.subject ? "Subject details saved." : "Subject added to this semester.");
+  }
+  function saveSemester(semester: Semester) {
+    updateData((current) => ({ ...current, semesters: [...current.semesters, semester], activeSemesterId: semester.id }));
+    setDialog(null);
+    setView("subjects");
+    notify("Semester created. Add its subjects to get started.");
+  }
+  function setActiveSemester(id: string) {
+    updateData((current) => ({ ...current, activeSemesterId: id }));
+  }
+  function toggleArchive(subject: Subject) {
+    updateData((current) => ({ ...current, subjects: current.subjects.map((entry) => entry.id === subject.id ? { ...entry, archived: !entry.archived } : entry) }));
+    setDialog(null);
+    notify(subject.archived ? "Subject restored to this semester." : "Subject archived. Its attendance history is preserved.");
+  }
+  function deleteRecord(record: AttendanceRecord) {
+    updateData((current) => ({ ...current, records: current.records.filter((entry) => entry.id !== record.id) }));
+    setDialog(null);
+    notify("Attendance record removed.");
+  }
+  function saveSettings(settings: WorkspaceSettings) {
+    updateData((current) => ({ ...current, settings }));
+    notify("Your attendance targets and display preference were updated.");
+  }
+  function saveTimetable(entries: TimetableEntry[]) {
+    if (!activeSemester) return;
+    updateData((current) => ({
+      ...current,
+      timetable: [...current.timetable.filter((entry) => entry.semesterId !== activeSemester.id), ...entries],
+    }));
+    notify("Your weekly timetable was updated.");
+  }
+  function exportCsv() {
+    if (!data || !activeSemester) return;
+    const rows = [["date", "day", "subject", "subject_code", "periods", "attended", "status"]];
+    for (const record of [...semesterRecords].sort((a, b) => a.date.localeCompare(b.date))) {
+      const subject = semesterSubjects.find((entry) => entry.id === record.subjectId);
+      rows.push([record.date, formatDay(record.date), subject?.name ?? "", subject?.code ?? "", String(record.periods), String(record.attended), getRecordStatus(record)]);
+    }
+    const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${activeSemester.name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}-attendance.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    notify("Your semester report downloaded as CSV.");
+  }
+  async function handleSignOut() {
+    try {
+      await signOut();
+      router.push("/login");
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : "Could not sign out. Please try again.");
+    }
+  }
+
+  if (!ready || !user) {
+    return <main className="auth-loading"><div className="loading-mark"><Icon name="check" /></div><p>Opening your attendance space…</p></main>;
+  }
+  if (workspaceError) {
+    return <main className="workspace-load-error"><div className="loading-mark"><Icon name="alert" /></div><h1>Couldn’t open your workspace</h1><p>{workspaceError}</p><button className="button button-primary" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Try again</button></main>;
+  }
+  if (loadedUserId !== user.id) {
+    return <main className="auth-loading"><div className="loading-mark"><Icon name="check" /></div><p>Opening your attendance space…</p></main>;
+  }
+  if (!data) return null;
+
+  const meta = viewMeta[view];
+  const todayLabel = new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+  const greet = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
+
+  return (
+    <div className="app-shell" data-theme={data.settings.theme}>
+      <aside className="sidebar">
+        <a href="/dashboard" className="brand" aria-label="Attendly overview"><span className="brand-mark"><Icon name="check" /></span><span>attendly<span className="brand-period">.</span></span></a>
+        <div className="sidebar-label">YOUR WORKSPACE</div>
+        <nav className="side-nav" aria-label="Main navigation">
+          {navItems.map((item) => (
+            <button key={item.key} className={`side-link ${view === item.key ? "active" : ""}`} data-mobile-hide={item.mobileHide || undefined} onClick={() => { setView(item.key); setAccountMenuOpen(false); }} aria-current={view === item.key ? "page" : undefined}>
+              <span className="nav-icon"><Icon name={item.icon} /></span><span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="side-spacer" />
+        <div className="sidebar-semester">
+          <label htmlFor="active-semester">ACTIVE SEMESTER</label>
+          <select id="active-semester" value={activeSemester?.id ?? ""} onChange={(event) => setActiveSemester(event.target.value)}>
+            {data.semesters.filter((semester) => !semester.archived).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+          </select>
+        </div>
+        {user.isPreview && <div className="preview-status"><span className="status-dot" /><span>Preview data stays in this browser. It isn’t synced to Supabase.</span></div>}
+        {!user.isPreview && <div className={`preview-status workspace-sync ${saveStatus}`} aria-live="polite"><span className="status-dot" /><span>{saveStatus === "saving" ? "Saving changes to your account…" : saveStatus === "error" ? "Couldn’t sync your latest changes." : "Your attendance data syncs to your account."}</span>{saveStatus === "error" && <button type="button" onClick={retryWorkspaceSave}>Retry</button>}</div>}
+        <div className="sidebar-profile">
+          <span className="avatar">{initials(user.name)}</span>
+          <div className="profile-copy"><strong>{user.name}</strong><span>{user.isPreview ? "Preview account" : user.email}</span></div>
+          <button className="icon-button profile-menu" onClick={() => setView("settings")} aria-label="Open settings"><Icon name="settings" /></button>
+        </div>
+      </aside>
+
+      <div className="app-main">
+        <header className="topbar">
+          <div className="topbar-left"><span className="topbar-title">Attendly</span><span className="topbar-period"><Icon name="calendar" />{activeSemester?.name ?? "No semester"}</span>{!user.isPreview && <button type="button" className={`sync-indicator ${saveStatus}`} onClick={saveStatus === "error" ? retryWorkspaceSave : undefined} aria-live="polite" title={saveStatus === "error" ? "Retry syncing changes" : undefined}><span className="status-dot"/><span className="sync-indicator-label">{saveStatus === "saving" ? "Saving" : saveStatus === "error" ? "Retry sync" : "Saved"}</span></button>}</div>
+          <div className="topbar-actions">
+            <button className="button button-quiet topbar-log-button" onClick={() => openAttendance()}><Icon name="plus" /><span className="topbar-log-label">Log attendance</span></button>
+            <div className="account-menu-anchor">
+              <button className="button button-quiet account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-label="Open account menu"><span className="avatar topbar-avatar">{initials(user.name)}</span><span className="account-trigger-name">{user.name.split(" ")[0]}</span><Icon name="more" /></button>
+              {accountMenuOpen && <div className="account-menu">
+                <div className="account-menu-heading"><strong>{user.name}</strong><span>{user.isPreview ? "Preview account" : user.email}</span></div>
+                {(["reports", "semesters", "settings"] as ViewKey[]).map((key) => <button key={key} onClick={() => { setView(key); setAccountMenuOpen(false); }}><Icon name={viewMeta[key].icon} />{viewMeta[key].title}</button>)}
+                <button className="account-signout" onClick={handleSignOut}><Icon name="logout" />Sign out</button>
+              </div>}
+            </div>
+          </div>
+        </header>
+
+        <main className="app-content">
+          <div className="page-heading">
+            <div className="page-heading-copy">
+              {view === "overview" && <div className="date-kicker">{todayLabel}</div>}
+              <h1>{view === "overview" ? `${greet}, ${user.name.split(" ")[0]}` : meta.title}</h1>
+              <p>{view === "overview" ? meta.subtitle : view === "subjects" ? `Your overall floor is ${data.settings.overallTarget}%. Subject floors start at ${data.settings.defaultSubjectTarget}%.` : meta.subtitle}</p>
+            </div>
+            <div className="heading-actions">
+              {view === "subjects" && <button className="button button-primary" onClick={() => setDialog({ kind: "subject" })}><Icon name="plus" />Add subject</button>}
+              {(view === "overview" || view === "attendance" || view === "calendar") && <button className="button button-primary" onClick={() => openAttendance()}><Icon name="plus" /><span>Log attendance</span></button>}
+              {view === "reports" && <button className="button button-quiet" onClick={exportCsv}><Icon name="download" />Export CSV</button>}
+              {view === "semesters" && <button className="button button-primary" onClick={() => setDialog({ kind: "semester" })}><Icon name="plus" />New semester</button>}
+            </div>
+          </div>
+
+          {view === "overview" && <OverviewView
+            userName={user.name}
+            todayLabel={todayLabel}
+            subjects={currentSubjects}
+            records={activeRecords}
+            totals={totals}
+            overallTarget={data.settings.overallTarget}
+            missingCount={missingSubjects.length}
+            onView={setView}
+            onLog={openAttendance}
+          />}
+          {view === "subjects" && <SubjectsView subjects={semesterSubjects} records={semesterRecords} onAdd={() => setDialog({ kind: "subject" })} onEdit={(subject) => setDialog({ kind: "subject", subject })} onLog={openAttendance} onQuickLog={quickLog} onArchive={(subject) => setDialog({ kind: "archive-subject", subject })} showArchived={showArchived} onToggleArchived={() => setShowArchived((value) => !value)} />}
+          {view === "attendance" && <AttendanceView subjects={semesterSubjects} records={semesterRecords} onEdit={(record) => setDialog({ kind: "attendance", record })} onDelete={(record) => setDialog({ kind: "delete-record", record })} onAdd={() => openAttendance()} />}
+          {view === "calendar" && <CalendarView subjects={semesterSubjects} records={semesterRecords} onAdd={(date) => openAttendance(undefined, date)} />}
+          {view === "timetable" && activeSemester && <TimetableView semesterId={activeSemester.id} semesterName={activeSemester.name} academicProfile={user.academicProfile} subjects={semesterSubjects} timetable={data.timetable} onSave={saveTimetable} onAddSubject={() => setDialog({ kind: "subject" })} />}
+          {view === "planner" && <PlannerView subjects={currentSubjects} records={activeRecords} overallTarget={data.settings.overallTarget} />}
+          {view === "reports" && <ReportsView subjects={currentSubjects} records={activeRecords} totals={totals} target={data.settings.overallTarget} onExport={exportCsv} />}
+          {view === "semesters" && <SemestersView semesters={data.semesters} activeSemesterId={data.activeSemesterId} onActivate={setActiveSemester} onCreate={() => setDialog({ kind: "semester" })} />}
+          {view === "settings" && <SettingsView settings={data.settings} onSave={saveSettings} />}
+        </main>
+      </div>
+
+      {dialog?.kind === "attendance" && <AttendanceModal subjects={semesterSubjects} initialRecord={dialog.record} initialSubjectId={dialog.subjectId} initialDate={dialog.date} onClose={() => setDialog(null)} onSave={saveAttendance} />}
+      {dialog?.kind === "subject" && activeSemester && <SubjectModal subject={dialog.subject} semesterId={activeSemester.id} defaultTarget={data.settings.defaultSubjectTarget} onClose={() => setDialog(null)} onSave={saveSubject} />}
+      {dialog?.kind === "semester" && <SemesterModal onClose={() => setDialog(null)} onSave={saveSemester} />}
+      {dialog?.kind === "delete-record" && <ConfirmModal title="Remove this class record?" copy={`${formatDate(dialog.record.date, { weekday: "long", day: "numeric", month: "long" })} — this record will be removed from the semester totals.`} action="Remove record" onClose={() => setDialog(null)} onConfirm={() => deleteRecord(dialog.record)} />}
+      {dialog?.kind === "archive-subject" && <ConfirmModal title={dialog.subject.archived ? "Restore this subject?" : "Archive this subject?"} copy={dialog.subject.archived ? "The subject will appear in your active subject list again." : "The subject’s history will stay saved, but it will leave your active dashboard totals."} action={dialog.subject.archived ? "Restore subject" : "Archive subject"} onClose={() => setDialog(null)} onConfirm={() => toggleArchive(dialog.subject)} />}
+      {toast && <div className="toast" role="status">{toast}</div>}
+    </div>
+  );
+}
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
+}
+
+function StatusPill({ health, text }: { health: ReturnType<typeof getHealth>; text?: string }) {
+  const label = text ?? ({ safe: "On track", watch: "Near target", critical: "Below target", empty: "No data" }[health]);
+  return <span className={`status-pill ${health}`}><span className="status-dot" />{label}</span>;
+}
+
+function OverviewView({
+  userName, todayLabel, subjects, records, totals, overallTarget, missingCount, onView, onLog,
+}: {
+  userName: string; todayLabel: string; subjects: Subject[]; records: AttendanceRecord[];
+  totals: ReturnType<typeof getTotals>; overallTarget: number; missingCount: number;
+  onView: (view: ViewKey) => void; onLog: (subjectId?: string) => void;
+}) {
+  const health = getHealth(totals.percentage, overallTarget);
+  const sortedSubjects = [...subjects].map((subject) => ({ subject, totals: getSubjectTotals(records, subject.id) }))
+    .sort((a, b) => (a.totals.percentage ?? -1) - (b.totals.percentage ?? -1));
+  const recent = [...records].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+  const labelDate = todayLabel.split(",").slice(1).join(",").trim();
+  return (
+    <>
+      <section className="metric-grid" aria-label="Semester attendance summary">
+        <div className="overall-card">
+          <div className="overall-card-copy">
+            <div className="overline">OVERALL ATTENDANCE</div>
+            <div className="overall-number">{formatPercentage(totals.percentage)}<small>{totals.percentage === null ? "No data yet" : "this semester"}</small></div>
+            <div className="overall-card-meta"><span>{totals.attended} of {totals.conducted} periods attended</span></div>
+          </div>
+          <div className="target-caption"><b>{overallTarget}%</b>minimum overall target</div>
+        </div>
+        <MetricCard icon="calendar" label="Classes conducted" value={String(totals.conducted)} foot={`${totals.attended} attended`} />
+        <MetricCard icon="book" label="Subjects" value={String(subjects.length)} foot={subjects.length ? "In this semester" : "Add your first subject"} />
+        <MetricCard icon="target" label="Need attention" value={String(missingCount)} foot={missingCount ? "Below subject target" : "All subjects on track"} urgent={missingCount > 0} />
+      </section>
+
+      <section className="dashboard-grid" aria-label="Attendance trends and subjects">
+        <div className="card trend-card">
+          <div className="card-heading"><div><h2>Attendance trend</h2><p>Running overall percentage by class day</p></div><div className="chart-legend"><span className="legend-mark"/>Attendance</div></div>
+          <TrendChart records={records} target={overallTarget} />
+        </div>
+        <div className="card subject-watch-card">
+          <div className="card-heading"><div><h2>Subject check-in</h2><p>Lowest attendance first</p></div><button className="text-link" onClick={() => onView("subjects")}>All subjects <Icon name="arrow" /></button></div>
+          {sortedSubjects.length ? <div className="subject-list">
+            {sortedSubjects.slice(0, 4).map(({ subject, totals: subjectTotals }) => {
+              const subjectHealth = getHealth(subjectTotals.percentage, subject.requiredAttendance);
+              return <div className="subject-list-row" key={subject.id}>
+                <div className="subject-list-main"><span className="subject-color" style={{ backgroundColor: subject.color }}/><div className="subject-list-copy"><strong>{subject.name}</strong><span>{subject.code} · target {subject.requiredAttendance}%</span></div></div>
+                <div className="subject-list-value"><strong>{formatPercentage(subjectTotals.percentage)}</strong><StatusPill health={subjectHealth} /></div>
+              </div>;
+            })}
+          </div> : <EmptyState title="No subjects yet" copy="Add a subject to start seeing your attendance here." action={<button className="text-link" onClick={() => onView("subjects")}>Add a subject <Icon name="arrow" /></button>} />}
+        </div>
+      </section>
+
+      <section className="card recent-card">
+        <div className="card-heading"><div><h2>Recent classes</h2><p>Attendance, grouped by the day it happened</p></div><button className="text-link" onClick={() => onView("attendance")}>Full history <Icon name="arrow" /></button></div>
+        {recent.length ? recent.map((record) => {
+          const subject = subjectById.get(record.subjectId);
+          const status = getRecordStatus(record);
+          return <div className="recent-row" key={record.id}>
+            <div className="recent-date"><strong>{formatDate(record.date, { day: "numeric", month: "short" })}</strong>{formatDay(record.date).slice(0, 3)}</div>
+            <div className="recent-subject"><span className="subject-color" style={{ backgroundColor: subject?.color ?? "#a8b8b1" }}/><strong>{subject?.name ?? "Archived subject"}</strong></div>
+            <span className="recent-periods">{record.periods} {record.periods === 1 ? "period" : "periods"}</span>
+            <StatusPill health={status === "present" ? "safe" : status === "absent" ? "critical" : "watch"} text={status === "partial" ? `${record.attended}/${record.periods} attended` : status === "present" ? "Present" : "Absent"} />
+          </div>;
+        }) : <div className="recent-empty">No classes recorded yet. Add a subject, then log its first class.</div>}
+      </section>
+      <p className="overview-footnote"><Icon name="spark" />{health === "critical" ? `Your overall attendance is under ${overallTarget}%. Each attended class helps bring it back up.` : health === "watch" ? `You’re close to the ${overallTarget}% overall floor. Keep an eye on upcoming absences.` : health === "safe" ? `You’re above the ${overallTarget}% overall floor. Keep your rhythm steady.` : `Start by adding your subjects and recording today’s classes.`}<span className="overview-footnote-date">{labelDate}</span></p>
+    </>
+  );
+}
+
+function MetricCard({ icon, label, value, foot, urgent = false }: { icon: IconName; label: string; value: string; foot: string; urgent?: boolean }) {
+  return <div className="card metric-card"><div className="metric-label"><span className="metric-icon"><Icon name={icon}/></span>{label}</div><div className="metric-value">{value}</div><div className="metric-foot"><strong className={urgent ? "red-text" : ""}>{foot}</strong></div></div>;
+}
+
+function EmptyState({ title, copy, action }: { title: string; copy: string; action?: ReactNode }) {
+  return <div className="empty-state"><div><strong>{title}</strong><p>{copy}</p>{action && <div style={{ marginTop: 12 }}>{action}</div>}</div></div>;
+}
+
+function TrendChart({ records, target }: { records: AttendanceRecord[]; target: number }) {
+  const perDay = new Map<string, { attended: number; conducted: number }>();
+  for (const record of records) {
+    const value = perDay.get(record.date) ?? { attended: 0, conducted: 0 };
+    value.attended += record.attended;
+    value.conducted += record.periods;
+    perDay.set(record.date, value);
+  }
+  const dates = [...perDay.keys()].sort();
+  let runningAttended = 0;
+  let runningConducted = 0;
+  const points = dates.map((date) => {
+    const day = perDay.get(date)!;
+    runningAttended += day.attended;
+    runningConducted += day.conducted;
+    return { date, value: (runningAttended / runningConducted) * 100 };
+  }).slice(-14);
+  if (!points.length) return <div className="chart-empty">Your trend will appear after you record a class.</div>;
+  const left = 57;
+  const right = 602;
+  const top = 34;
+  const bottom = 151;
+  const xFor = (index: number) => points.length === 1 ? (left + right) / 2 : left + (index / (points.length - 1)) * (right - left);
+  const yFor = (value: number) => bottom - ((Math.max(60, Math.min(100, value)) - 60) / 40) * (bottom - top);
+  const coords = points.map((point, index) => [xFor(index), yFor(point.value)] as const);
+  const linePath = coords.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ");
+  const areaPath = `${linePath} L${coords.at(-1)?.[0]},${bottom} L${coords[0]?.[0]},${bottom} Z`;
+  const targetY = yFor(target);
+  return <svg className="trend-chart" viewBox="0 0 620 184" role="img" aria-label={`Overall attendance trend. Current target ${target} percent.`}>
+    <defs><linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#76b89a" stopOpacity=".23"/><stop offset="100%" stopColor="#76b89a" stopOpacity="0"/></linearGradient></defs>
+    {[100, 80, 60].map((label) => <g key={label}><line x1={left} x2={right} y1={yFor(label)} y2={yFor(label)} className={label === target ? "chart-target-line" : "chart-grid-line"}/><text x="0" y={yFor(label) + 3} className="chart-label">{label}%</text></g>)}
+    {target !== 100 && target !== 80 && target !== 60 && <line x1={left} x2={right} y1={targetY} y2={targetY} className="chart-target-line"/>}
+    <path d={areaPath} className="chart-area"/><path d={linePath} className="chart-line"/>
+    {coords.map(([x, y], index) => <circle key={points[index].date} cx={x} cy={y} r={index === coords.length - 1 ? 4.3 : 2.2} className="chart-point"><title>{formatDate(points[index].date)}: {formatPercentage(points[index].value)}</title></circle>)}
+    {[0, Math.floor((points.length - 1) / 2), points.length - 1].filter((value, index, values) => values.indexOf(value) === index).map((index) => <text key={points[index].date} x={xFor(index)} y="176" textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} className="chart-label">{formatDate(points[index].date, { day: "numeric", month: "short" })}</text>)}
+  </svg>;
+}
+
+function SubjectsView({
+  subjects, records, onAdd, onEdit, onLog, onQuickLog, onArchive, showArchived, onToggleArchived,
+}: {
+  subjects: Subject[]; records: AttendanceRecord[]; onAdd: () => void; onEdit: (subject: Subject) => void;
+  onLog: (subjectId?: string) => void; onQuickLog: (subjectId: string, status: "present" | "absent") => void;
+  onArchive: (subject: Subject) => void; showArchived: boolean; onToggleArchived: () => void;
+}) {
+  const visible = subjects.filter((subject) => showArchived ? subject.archived : !subject.archived);
+  return <>
+    <div className="section-title-row subject-section-heading">
+      <div><h2>{showArchived ? "Archived subjects" : "Current subjects"}</h2><p>{subjects.filter((subject) => !subject.archived).length} active · history stays attached to each subject</p></div>
+      <button className="text-link" onClick={onToggleArchived}><Icon name="archive" />{showArchived ? "Show current" : "Show archived"}</button>
+    </div>
+    {visible.length ? <div className="subject-grid">{visible.map((subject) => {
+      const summary = getSubjectTotals(records, subject.id);
+      const health = getHealth(summary.percentage, subject.requiredAttendance);
+      return <article className="card subject-card" key={subject.id}>
+        <div className="subject-card-head">
+          <div className="subject-identity"><span className="subject-color" style={{ backgroundColor: subject.color }}/><div className="subject-name"><h3>{subject.name}</h3><p>{subject.code || "No subject code"} · {subject.credits} credits</p></div></div>
+          <div className="subject-card-actions">
+            <button className="icon-button" aria-label={`Edit ${subject.name}`} onClick={() => onEdit(subject)}><Icon name="edit" /></button>
+            <button className="icon-button" aria-label={subject.archived ? `Restore ${subject.name}` : `Archive ${subject.name}`} onClick={() => onArchive(subject)}><Icon name={subject.archived ? "refresh" : "archive"} /></button>
+          </div>
+        </div>
+        <div className="subject-progress-row"><span className="subject-percentage">{formatPercentage(summary.percentage)}</span><span className="subject-attended">{summary.attended} of {summary.conducted} periods attended</span></div>
+        <div className="progress-track" aria-label={`${formatPercentage(summary.percentage)} attendance`}><div className={`progress-fill ${health}`} style={{ width: `${Math.min(100, summary.percentage ?? 0)}%` }}/></div>
+        <div className="subject-footer"><span className="subject-footer-copy">Required <strong>{subject.requiredAttendance}%</strong></span><StatusPill health={health}/></div>
+        {!subject.archived && <div className="subject-actions-row"><button className="button button-quiet quick-present" onClick={() => onQuickLog(subject.id, "present")}><Icon name="check"/>Present</button><button className="button button-quiet quick-absent" onClick={() => onQuickLog(subject.id, "absent")}><Icon name="close"/>Absent</button><button className="button button-quiet" onClick={() => onLog(subject.id)}><Icon name="plus"/>More</button></div>}
+      </article>;
+    })}</div> : <div className="card"><EmptyState title={showArchived ? "No archived subjects" : "Add your first subject"} copy={showArchived ? "Subjects you archive will stay here with their attendance history." : "Add the classes you’re taking. Each subject starts with a 75% required attendance target."} action={!showArchived ? <button className="button button-primary" onClick={onAdd}><Icon name="plus"/>Add subject</button> : undefined}/></div>}
+  </>;
+}
+
+function AttendanceView({
+  subjects, records, onEdit, onDelete, onAdd,
+}: {
+  subjects: Subject[]; records: AttendanceRecord[]; onEdit: (record: AttendanceRecord) => void;
+  onDelete: (record: AttendanceRecord) => void; onAdd: () => void;
+}) {
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+  const filtered = [...records].filter((record) => {
+    const status = getRecordStatus(record);
+    return (subjectFilter === "all" || record.subjectId === subjectFilter) &&
+      (statusFilter === "all" || status === statusFilter) &&
+      (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate);
+  }).sort((a, b) => b.date.localeCompare(a.date));
+  const grouped = new Map<string, AttendanceRecord[]>();
+  filtered.forEach((record) => grouped.set(record.date, [...(grouped.get(record.date) ?? []), record]));
+  return <>
+    <div className="history-summary-row"><span><strong>{filtered.length}</strong> {filtered.length === 1 ? "class record" : "class records"}</span><span>Present, absent, or partial attendance by date</span></div>
+    <div className="filter-bar">
+      <select className="filter-select" aria-label="Filter by subject" value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}><option value="all">All subjects</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select>
+      <select className="filter-select" aria-label="Filter by attendance status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="present">Present</option><option value="absent">Absent</option><option value="partial">Partial</option></select>
+      <label className="date-filter-label">From <input className="filter-input" type="date" aria-label="From date" value={fromDate} onChange={(event) => setFromDate(event.target.value)}/></label>
+      <label className="date-filter-label">To <input className="filter-input" type="date" aria-label="To date" value={toDate} onChange={(event) => setToDate(event.target.value)}/></label>
+    </div>
+    {grouped.size ? [...grouped.entries()].map(([date, dayRecords]) => <section className="card history-day" key={date}>
+      <div className="history-day-heading"><strong>{formatDay(date)}, {formatDate(date, { day: "numeric", month: "long", year: "numeric" })}</strong><span>{dayRecords.length} {dayRecords.length === 1 ? "class" : "classes"} · {dayRecords.reduce((sum, record) => sum + record.periods, 0)} periods</span></div>
+      {dayRecords.map((record) => {
+        const subject = subjectById.get(record.subjectId);
+        const status = getRecordStatus(record);
+        const health = status === "present" ? "safe" : status === "absent" ? "critical" : "watch";
+        return <div className="history-row" key={record.id}>
+          <div className="history-subject"><span className="subject-color" style={{ backgroundColor: subject?.color ?? "#a8b8b1" }}/><strong>{subject?.name ?? "Archived subject"}</strong></div>
+          <span className="history-detail">{record.attended} of {record.periods} periods attended{record.note ? ` · ${record.note}` : ""}</span>
+          <StatusPill health={health} text={status === "partial" ? "Partial" : status === "present" ? "Present" : "Absent"}/>
+          <div className="history-actions"><button className="icon-button" aria-label={`Edit ${subject?.name ?? "class"} record`} onClick={() => onEdit(record)}><Icon name="edit"/></button><button className="icon-button" aria-label="Remove class record" onClick={() => onDelete(record)}><Icon name="trash"/></button></div>
+        </div>;
+      })}
+    </section>) : <div className="card"><EmptyState title={records.length ? "No matching classes" : "No attendance recorded yet"} copy={records.length ? "Change the filters or choose a wider date range." : "Log a class to start building your date-wise history."} action={!records.length ? <button className="button button-primary" onClick={onAdd}><Icon name="plus"/>Log a class</button> : undefined}/></div>}
+  </>;
+}
+
+function CalendarView({ subjects, records, onAdd }: { subjects: Subject[]; records: AttendanceRecord[]; onAdd: (date?: string) => void }) {
+  const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12));
+  const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
+  const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+  const firstWeekday = new Date(month.getFullYear(), month.getMonth(), 1, 12).getDay();
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0, 12).getDate();
+  const cellsCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+  const cells = Array.from({ length: cellsCount }, (_, index) => {
+    const dayNumber = index - firstWeekday + 1;
+    const date = new Date(month.getFullYear(), month.getMonth(), dayNumber, 12);
+    return { date, dateString: dateKey(date), inMonth: date.getMonth() === month.getMonth() };
+  });
+  const monthLabel = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(month);
+  const selectedRecords = records.filter((record) => record.date === selectedDate);
+  const recordsByDate = new Map<string, AttendanceRecord[]>();
+  records.forEach((record) => recordsByDate.set(record.date, [...(recordsByDate.get(record.date) ?? []), record]));
+
+  return <div className="calendar-layout">
+    <section className="card calendar-card">
+      <div className="calendar-controls"><strong>{monthLabel}</strong><div className="calendar-arrow-row"><button className="icon-button" aria-label="Previous month" onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1, 12))}><Icon name="chevron-left"/></button><button className="icon-button" aria-label="Next month" onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1, 12))}><Icon name="chevron-right"/></button></div></div>
+      <div className="calendar-weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="calendar-grid">{cells.map(({ date, dateString, inMonth }) => {
+        const dayRecords = recordsByDate.get(dateString) ?? [];
+        const today = dateString === dateKey(new Date());
+        return <button className={`calendar-day ${inMonth ? "" : "muted"} ${today ? "today" : ""} ${selectedDate === dateString ? "selected" : ""}`} key={dateString} onClick={() => setSelectedDate(dateString)} aria-label={`${formatDay(dateString)}, ${formatDate(dateString)}${dayRecords.length ? `, ${dayRecords.length} classes` : ""}`} aria-pressed={selectedDate === dateString}>
+          <span className="calendar-day-number">{date.getDate()}</span>
+          <span className="calendar-dots">{dayRecords.slice(0, 4).map((record) => <span className={`calendar-dot ${getRecordStatus(record)}`} key={record.id}/>)}</span>
+        </button>;
+      })}</div>
+    </section>
+    <aside className="card calendar-side-card">
+      <h2>{formatDay(selectedDate)}, {formatDate(selectedDate, { day: "numeric", month: "long" })}</h2>
+      <p>{selectedRecords.length ? `${selectedRecords.length} ${selectedRecords.length === 1 ? "class" : "classes"} recorded` : "No classes recorded on this day"}</p>
+      {selectedRecords.map((record) => {
+        const subject = subjectById.get(record.subjectId);
+        const status = getRecordStatus(record);
+        return <div className="calendar-record" key={record.id}><span className="subject-color" style={{ backgroundColor: subject?.color ?? "#a8b8b1" }}/><div><strong>{subject?.name ?? "Archived subject"}</strong><span>{record.attended} of {record.periods} periods attended</span></div><StatusPill health={status === "present" ? "safe" : status === "absent" ? "critical" : "watch"} text={status === "partial" ? "Partial" : status === "present" ? "Present" : "Absent"}/></div>;
+      })}
+      <button className="button button-quiet calendar-add" onClick={() => onAdd(selectedDate)}><Icon name="plus"/>Log class on this day</button>
+    </aside>
+  </div>;
+}
+
+const timetableDays = [
+  { weekday: 1, label: "Monday" },
+  { weekday: 2, label: "Tuesday" },
+  { weekday: 3, label: "Wednesday" },
+  { weekday: 4, label: "Thursday" },
+  { weekday: 5, label: "Friday" },
+];
+
+type TimetableBreak = { afterHour: number; label: "Lunch" | "Break" };
+type TimetableColumn = { kind: "hour"; hour: number } | ({ kind: "break" } & TimetableBreak);
+
+function semesterBreaks(semesterName: string): TimetableBreak[] {
+  const semesterMatch = semesterName.match(/(?:semester|sem)[^\d]*(\d+)/i) ?? semesterName.match(/(\d+)/);
+  const semesterNumber = Number(semesterMatch?.[1]);
+  if ([1, 2, 5, 6].includes(semesterNumber)) return [{ afterHour: 3, label: "Lunch" }, { afterHour: 5, label: "Break" }];
+  if ([3, 4, 7, 8].includes(semesterNumber)) return [{ afterHour: 2, label: "Break" }, { afterHour: 4, label: "Lunch" }];
+  return [];
+}
+
+function timetableKey(weekday: number, hour: number) { return `${weekday}-${hour}`; }
+
+function timetableDraft(entries: TimetableEntry[], semesterId: string) {
+  return Object.fromEntries(entries.filter((entry) => entry.semesterId === semesterId).map((entry) => [timetableKey(entry.weekday, entry.hour), entry.subjectId]));
+}
+
+function TimetableView({
+  semesterId, semesterName, academicProfile, subjects, timetable, onSave, onAddSubject,
+}: {
+  semesterId: string; semesterName: string; academicProfile?: StudentAcademicProfile | null; subjects: Subject[]; timetable: TimetableEntry[];
+  onSave: (entries: TimetableEntry[]) => void; onAddSubject: () => void;
+}) {
+  const activeEntries = timetable.filter((entry) => entry.semesterId === semesterId);
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>(() => ({ [semesterId]: timetableDraft(timetable, semesterId) }));
+  const [editingSemesters, setEditingSemesters] = useState<Record<string, boolean>>({});
+  const [collegeRefresh, setCollegeRefresh] = useState(0);
+  const [collegePdf, setCollegePdf] = useState<{ status: "loading" | "ready" | "unavailable"; images: string[]; message: string }>({ status: "loading", images: [], message: "Fetching your matching college timetable…" });
+  const draft = drafts[semesterId] ?? timetableDraft(timetable, semesterId);
+  const editing = editingSemesters[semesterId] ?? activeEntries.length === 0;
+  const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+  const activeSubjects = subjects.filter((subject) => !subject.archived);
+  const breaks = semesterBreaks(semesterName);
+  const profileKey = academicProfile ? [academicProfile.departmentCode, academicProfile.academicYearCode, academicProfile.studyYear, academicProfile.semester, academicProfile.sectionCode, academicProfile.collegeTimetableUrl].join("|") : "";
+  const columns: TimetableColumn[] = [];
+  for (let hour = 1; hour <= 7; hour += 1) {
+    columns.push({ kind: "hour", hour });
+    breaks.filter((pause) => pause.afterHour === hour).forEach((pause) => columns.push({ kind: "break", ...pause }));
+  }
+
+  useEffect(() => {
+    if (!academicProfile || !academicProfile.collegeTimetableUrl) {
+      setCollegePdf({ status: "unavailable", images: [], message: "No matching college timetable was found. Your editable weekday timetable is still available below." });
+      return;
+    }
+
+    const controller = new AbortController();
+    let imageUrls: string[] = [];
+    const params = new URLSearchParams({
+      mode: "pdf",
+      department: academicProfile.departmentCode,
+      academicYear: academicProfile.academicYearCode,
+      studyYear: String(academicProfile.studyYear),
+      semester: String(academicProfile.semester),
+      section: academicProfile.sectionCode,
+    });
+
+    setCollegePdf({ status: "loading", images: [], message: "Fetching your matching college timetable…" });
+    fetch(`/api/svce-timetable?${params.toString()}`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok || !response.headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
+          throw new Error("The matching college timetable could not be fetched. Your editable weekday timetable is still available below.");
+        }
+        return response.arrayBuffer();
+      })
+      .then(renderTimetablePdfPages)
+      .then((images) => {
+        if (controller.signal.aborted) {
+          images.forEach((url) => URL.revokeObjectURL(url));
+          return;
+        }
+        imageUrls = images;
+        setCollegePdf({ status: "ready", images, message: `The original timetable is shown as ${images.length} full PDF page${images.length === 1 ? "" : "s"}, without cropping. Your editable weekday schedule is below.` });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setCollegePdf({
+          status: "unavailable",
+          images: [],
+          message: error instanceof Error ? error.message : "The college timetable could not be previewed. Your editable weekday timetable is still available below.",
+        });
+      });
+
+    return () => {
+      controller.abort();
+      imageUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [academicProfile, profileKey, collegeRefresh]);
+
+  function setSlot(weekday: number, hour: number, subjectId: string, span = 1) {
+    setDrafts((current) => ({
+      ...current,
+      [semesterId]: {
+        ...(current[semesterId] ?? draft),
+        ...Object.fromEntries(Array.from({ length: span }, (_, index) => [timetableKey(weekday, hour + index), subjectId])),
+      },
+    }));
+  }
+  function beginEditing() {
+    setDrafts((current) => ({ ...current, [semesterId]: timetableDraft(timetable, semesterId) }));
+    setEditingSemesters((current) => ({ ...current, [semesterId]: true }));
+  }
+  function cancelEditing() {
+    setDrafts((current) => ({ ...current, [semesterId]: timetableDraft(timetable, semesterId) }));
+    setEditingSemesters((current) => ({ ...current, [semesterId]: false }));
+  }
+  function save() {
+    const entries: TimetableEntry[] = [];
+    for (const day of timetableDays) {
+      for (let hour = 1; hour <= 7; hour += 1) {
+        const subjectId = draft[timetableKey(day.weekday, hour)];
+        if (subjectId && subjectById.has(subjectId)) entries.push({ semesterId, weekday: day.weekday, hour, subjectId });
+      }
+    }
+    onSave(entries);
+    setEditingSemesters((current) => ({ ...current, [semesterId]: false }));
+  }
+
+  function renderDaySlots(day: typeof timetableDays[number]): ReactNode[] {
+    const cells: ReactNode[] = [];
+    for (let index = 0; index < columns.length; index += 1) {
+      const column = columns[index];
+      if (column.kind === "break") {
+        cells.push(<td className={`timetable-break-cell ${column.label.toLowerCase()}`} key={`${column.kind}-${index}`}><strong>{column.label}</strong></td>);
+        continue;
+      }
+
+      const hour = column.hour;
+      const subjectId = draft[timetableKey(day.weekday, hour)] ?? "";
+      let span = 1;
+      if (subjectId) {
+        while (index + span < columns.length) {
+          const nextColumn = columns[index + span];
+          if (nextColumn.kind !== "hour" || nextColumn.hour !== hour + span) break;
+          if ((draft[timetableKey(day.weekday, nextColumn.hour)] ?? "") !== subjectId) break;
+          span += 1;
+        }
+      }
+      const subject = subjectById.get(subjectId);
+      const hourDescription = span === 1 ? `hour ${hour}` : `hours ${hour} to ${hour + span - 1}`;
+      cells.push(<td colSpan={span} key={`${column.kind}-${hour}`}>
+        {editing ? <label className="timetable-slot-editor"><span className="sr-only">{day.label}, {hourDescription}</span><select aria-label={`${day.label}, ${hourDescription}`} value={subjectId} disabled={!activeSubjects.length} onChange={(event) => setSlot(day.weekday, hour, event.target.value, span)}>
+          <option value="">Free hour</option>{subjects.map((option) => <option value={option.id} key={option.id} disabled={option.archived}>{option.name}{option.archived ? " · archived" : ""}</option>)}
+        </select></label> : subject ? <div className={`timetable-subject-chip ${subject.archived ? "archived" : ""}`} style={{ borderLeftColor: subject.color }}><strong>{subject.name}</strong>{subject.code && <small>{subject.code}</small>}</div> : <div className="timetable-free-slot">Free</div>}
+      </td>);
+      index += span - 1;
+    }
+    return cells;
+  }
+
+  return <div className="timetable-view-stack">
+    {academicProfile && <section className="card college-timetable-card">
+      <div className="college-timetable-heading">
+        <div><span className="college-timetable-eyebrow">OFFICIAL SVCE TIMETABLE</span><h2>College timetable · original PDF</h2><p>{academicProfile.department} · {getStudyYearLabel(academicProfile.studyYear)} · Semester {academicProfile.semester} · {academicProfile.section} · {academicProfile.academicYear}</p></div>
+        <div className="college-timetable-actions">
+          {academicProfile.collegeTimetableUrl && <a className="button button-quiet" href={academicProfile.collegeTimetableUrl} target="_blank" rel="noreferrer">Source PDF <Icon name="external"/></a>}
+          <button className="button button-quiet" onClick={() => setCollegeRefresh((refresh) => refresh + 1)} disabled={collegePdf.status === "loading" || !academicProfile.collegeTimetableUrl}><Icon name="refresh"/>Refresh</button>
+        </div>
+      </div>
+      {collegePdf.status === "ready" ? <>
+        <div className="college-timetable-pages" role="group" aria-label={`Complete official timetable PDF pages for ${academicProfile.department}, semester ${academicProfile.semester}`}>
+          {collegePdf.images.map((image, index) => <figure className="college-timetable-page" key={`${profileKey}-page-${index + 1}`}>
+            <img src={image} alt={`Official SVCE timetable, page ${index + 1} of ${collegePdf.images.length}. Full page shown without cropping.`} loading={index === 0 ? "eager" : "lazy"}/>
+            <figcaption>Page {index + 1} of {collegePdf.images.length}</figcaption>
+          </figure>)}
+        </div>
+        <p className="college-timetable-note"><Icon name="check-circle"/>{collegePdf.message}</p>
+      </> : <div className={`college-timetable-message ${collegePdf.status}`} role="status">
+        {collegePdf.status === "loading" && <Icon name="refresh"/>}
+        {collegePdf.status === "unavailable" && <Icon name="alert"/>}
+        <span>{collegePdf.message}</span>
+      </div>}
+    </section>}
+    <section className="card timetable-card">
+    <div className="timetable-heading">
+      <div><h2>Weekly class timetable</h2><p>{breaks.length ? `${semesterName}: ${breaks[0].label} after Hour ${breaks[0].afterHour} and ${breaks[1].label.toLowerCase()} after Hour ${breaks[1].afterHour}.` : `${semesterName}: no default break structure is set.`} Seven hours a day, Monday to Friday.</p></div>
+      <div className="timetable-actions">
+        {editing ? <>
+          <button className="button button-quiet" onClick={cancelEditing}>Cancel</button>
+          <button className="button button-primary" onClick={save}><Icon name="check"/>Save timetable</button>
+        </> : <button className="button button-quiet" onClick={beginEditing}><Icon name="edit"/>Edit timetable</button>}
+      </div>
+    </div>
+    {!activeSubjects.length && <div className="timetable-empty-subjects"><span>Add subjects before filling out your weekly schedule.</span><button className="text-link" onClick={onAddSubject}><Icon name="plus"/>Add a subject</button></div>}
+    <div className="timetable-scroll">
+      <table className="timetable-table">
+        <colgroup><col className="timetable-day-column"/>{columns.map((column, index) => <col className={column.kind === "break" ? "timetable-break-column" : "timetable-hour-slot-column"} key={`${column.kind}-${index}`}/>)}</colgroup>
+        <thead><tr><th className="timetable-day-heading" scope="col">Day</th>{columns.map((column, index) => <th className={column.kind === "break" ? `timetable-break-heading ${column.label.toLowerCase()}` : "timetable-hour-heading"} scope="col" key={`${column.kind}-${index}`}>{column.kind === "hour" ? <>Hour <span>{column.hour}</span></> : column.label}</th>)}</tr></thead>
+        <tbody>{timetableDays.map((day) => <tr key={day.weekday}>
+          <th className="timetable-day-label" scope="row">{day.label}</th>
+          {renderDaySlots(day)}
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <div className="timetable-footnote"><Icon name="calendar"/><span>This timetable is a reference for your week. It does not create or change attendance records.</span></div>
+    </section>
+  </div>;
+}
+
+function PlannerView({ subjects, records, overallTarget }: { subjects: Subject[]; records: AttendanceRecord[]; overallTarget: number }) {
+  const [scopeId, setScopeId] = useState("overall");
+  const [futureClasses, setFutureClasses] = useState(3);
+  const [target, setTarget] = useState(overallTarget);
+  const selectedSubject = subjects.find((subject) => subject.id === scopeId);
+  const scopedRecords = selectedSubject ? records.filter((record) => record.subjectId === selectedSubject.id) : records;
+  const current = getTotals(scopedRecords);
+  const floor = selectedSubject?.requiredAttendance ?? overallTarget;
+  const allowedTarget = Math.max(floor, Math.min(100, target));
+  const attendedScenario = afterAttending(current, futureClasses);
+  const missedScenario = afterMissing(current, futureClasses);
+  const needed = classesNeeded(current, allowedTarget);
+  const canMiss = classesThatCanBeMissed(current, allowedTarget);
+  return <div className="planner-grid">
+    <section className="card planner-controls">
+      <div className="card-heading"><div><h2>Attendance planner</h2><p>Change one assumption and see what it would do.</p></div><span className="metric-icon"><Icon name="target"/></span></div>
+      <div className="planner-form-grid">
+        <label className="field-label">Plan for
+          <select value={scopeId} onChange={(event) => { setScopeId(event.target.value); const next = subjects.find((subject) => subject.id === event.target.value); setTarget(next?.requiredAttendance ?? overallTarget); }}>
+            <option value="overall">Overall attendance</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+          </select>
+        </label>
+        <div className="form-two-col planner-fields">
+          <label className="field-label">Target attendance (%)<input type="number" min={floor} max="100" value={allowedTarget} onChange={(event) => setTarget(Math.max(floor, Math.min(100, Number(event.target.value) || floor)))}/></label>
+          <label className="field-label">Upcoming classes<input type="number" min="0" max="60" value={futureClasses} onChange={(event) => setFutureClasses(Math.max(0, Math.min(60, Number(event.target.value) || 0)))}/></label>
+        </div>
+        <div className="planner-current"><span>Current attendance</span><strong>{formatPercentage(current.percentage)}</strong><span>{current.attended} attended / {current.conducted} conducted periods</span></div>
+        {current.percentage !== null && current.percentage < allowedTarget && <div className="planner-target-note"><Icon name="alert"/><span>You’re currently below {allowedTarget}%. Attend every upcoming class to rebuild your buffer. Future absences would move you further from the target.</span></div>}
+        <div className="formula-explainer"><h3>How the projections work</h3><p>Every projection uses periods attended and periods conducted, not an average of subject percentages.</p>
+          <div className="formula-line"><span>Attend x classes</span><code>(attended + x) ÷ (conducted + x) × 100</code></div>
+          <div className="formula-line"><span>Miss x classes</span><code>attended ÷ (conducted + x) × 100</code></div>
+        </div>
+      </div>
+    </section>
+    <div className="planner-results">
+      <div className="card planner-result"><div className="overline">IF YOU ATTEND {futureClasses} {futureClasses === 1 ? "CLASS" : "CLASSES"}</div><strong>{formatPercentage(attendedScenario)}</strong><p>{attendedScenario !== null && current.percentage !== null && attendedScenario >= current.percentage ? "Your percentage would rise." : "Your projected percentage."}</p></div>
+      <div className="card planner-result"><div className="overline">IF YOU MISS {futureClasses} {futureClasses === 1 ? "CLASS" : "CLASSES"}</div><strong>{formatPercentage(missedScenario)}</strong><p>Your projected percentage after those absences.</p></div>
+      <div className="card planner-result"><div className="overline">CLASSES NEEDED TO REACH {allowedTarget}%</div><strong>{current.percentage !== null && current.percentage >= allowedTarget ? "You’re there" : needed === null ? "Not reachable" : `${needed} ${needed === 1 ? "class" : "classes"}`}</strong><p>{needed === null ? "A 100% target cannot be reached after an absence." : needed === 0 ? "You’re already at or above your target." : "Attend these consecutively, with no further absences."}</p></div>
+      <div className="card planner-result"><div className="overline">ABSENCES YOU CAN STILL TAKE</div><strong>{canMiss === null ? "No limit" : canMiss === 0 ? current.percentage !== null && current.percentage < allowedTarget ? "0 classes" : "None" : `${canMiss} ${canMiss === 1 ? "class" : "classes"}`}</strong><p>{current.percentage !== null && current.percentage < allowedTarget ? "Attend future classes first to return above target." : `Stay at or above ${allowedTarget}% overall.`}</p></div>
+    </div>
+  </div>;
+}
+
+function ReportsView({ subjects, records, totals, target, onExport }: { subjects: Subject[]; records: AttendanceRecord[]; totals: ReturnType<typeof getTotals>; target: number; onExport: () => void }) {
+  const belowTarget = subjects.filter((subject) => {
+    const summary = getSubjectTotals(records, subject.id);
+    return summary.percentage === null || summary.percentage < subject.requiredAttendance;
+  }).length;
+  return <>
+    <div className="report-summary">
+      <div className="card report-summary-card"><span>Overall attendance</span><strong>{formatPercentage(totals.percentage)}</strong></div>
+      <div className="card report-summary-card"><span>Periods attended</span><strong>{totals.attended} <small>/ {totals.conducted}</small></strong></div>
+      <div className="card report-summary-card"><span>Subjects under target</span><strong>{belowTarget} <small>/ {subjects.length}</small></strong></div>
+    </div>
+    <section className="card report-card">
+      <div className="report-heading"><div><h2>Subject summary</h2><p>Calculated from all date-wise class records</p></div><button className="button button-quiet" onClick={onExport}><Icon name="download"/>Download CSV</button></div>
+      {subjects.length ? <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Subject</th><th>Attended</th><th>Conducted</th><th>Attendance</th><th>Required</th><th>Standing</th></tr></thead><tbody>
+        {subjects.map((subject) => {
+          const summary = getSubjectTotals(records, subject.id);
+          const health = getHealth(summary.percentage, subject.requiredAttendance);
+          return <tr key={subject.id}><td><span className="report-subject"><span className="subject-color" style={{ backgroundColor: subject.color }}/>{subject.name}</span></td><td>{summary.attended}</td><td>{summary.conducted}</td><td><strong>{formatPercentage(summary.percentage)}</strong></td><td>{subject.requiredAttendance}%</td><td><StatusPill health={health}/></td></tr>;
+        })}
+      </tbody><tfoot><tr><td><strong>Overall · weighted</strong></td><td><strong>{totals.attended}</strong></td><td><strong>{totals.conducted}</strong></td><td><strong>{formatPercentage(totals.percentage)}</strong></td><td>{target}%</td><td><StatusPill health={getHealth(totals.percentage, target)}/></td></tr></tfoot></table></div> : <EmptyState title="Nothing to report yet" copy="Add subjects and class records to build your semester report."/>}
+    </section>
+    <section className="report-note"><Icon name="target"/><p>Overall attendance is calculated as total periods attended divided by total periods conducted. Subject percentages are shown individually and are not averaged to make the overall figure.</p></section>
+  </>;
+}
+
+function SemestersView({ semesters, activeSemesterId, onActivate, onCreate }: { semesters: Semester[]; activeSemesterId: string; onActivate: (id: string) => void; onCreate: () => void }) {
+  return <>
+    <section className="semester-list">{semesters.map((semester) => <article className="card semester-row" key={semester.id}>
+      <div className="semester-info"><span className="semester-symbol"><Icon name="layers"/></span><div><strong>{semester.name}{semester.id === activeSemesterId && <span className="active-term-tag">Active</span>}</strong><span>{semester.startDate ? formatDate(semester.startDate, { month: "short", year: "numeric" }) : "Start date not set"}{semester.endDate ? ` — ${formatDate(semester.endDate, { month: "short", year: "numeric" })}` : " — End date not set"}</span></div></div>
+      {semester.id !== activeSemesterId ? <button className="button button-quiet" onClick={() => onActivate(semester.id)}>Set active</button> : <span className="semester-current"><Icon name="check-circle"/> Current</span>}
+    </article>)}</section>
+    <div className="semester-help"><div><strong>Keep each term separate</strong><p>Subjects and attendance are grouped by semester so old records remain available when you switch terms.</p></div><button className="button button-primary" onClick={onCreate}><Icon name="plus"/>Create semester</button></div>
+  </>;
+}
+
+function SettingsView({ settings, onSave }: { settings: WorkspaceSettings; onSave: (settings: WorkspaceSettings) => void }) {
+  const [draft, setDraft] = useState(settings);
+  useEffect(() => setDraft(settings), [settings]);
+  return <div className="settings-layout">
+    <section className="card settings-card"><h2>Attendance targets</h2><p>Keep these floors at or above your institution’s minimums.</p>
+      <label className="settings-field"><span><strong>Overall minimum</strong><span>Weighted across all active subjects. Minimum floor: 80%.</span></span><input type="number" min="80" max="100" value={draft.overallTarget} onChange={(event) => setDraft({ ...draft, overallTarget: Math.max(80, Math.min(100, Number(event.target.value) || 80)) })}/></label>
+      <label className="settings-field"><span><strong>Default subject minimum</strong><span>Used when adding a new subject. Minimum floor: 75%.</span></span><input type="number" min="75" max="100" value={draft.defaultSubjectTarget} onChange={(event) => setDraft({ ...draft, defaultSubjectTarget: Math.max(75, Math.min(100, Number(event.target.value) || 75)) })}/></label>
+      <div className="settings-note">You can raise a specific subject’s target from its subject card. The overall calculation stays weighted by periods attended and conducted.</div>
+    </section>
+    <section className="card settings-card"><h2>Appearance and data</h2><p>Choose how Attendly looks on this device.</p>
+      <label className="settings-field"><span><strong>Color theme</strong><span>Applies to your dashboard in this browser.</span></span><select className="setting-select" value={draft.theme} onChange={(event) => setDraft({ ...draft, theme: event.target.value as WorkspaceSettings["theme"] })}><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      <div className="settings-note">{process.env.NEXT_PUBLIC_SUPABASE_URL ? "Your attendance, subjects, semesters, timetable, and targets sync to your Supabase account. Row-level security keeps each student’s data private." : "This front-end preview saves attendance in this browser only. Connect Supabase Auth and PostgreSQL before using it for real records."}</div>
+      <button className="button button-primary settings-save" onClick={() => onSave(draft)}><Icon name="check"/>Save settings</button>
+    </section>
+  </div>;
+}
+
+function AttendanceModal({
+  subjects, initialRecord, initialSubjectId, initialDate, onClose, onSave,
+}: {
+  subjects: Subject[]; initialRecord?: AttendanceRecord; initialSubjectId?: string; initialDate?: string;
+  onClose: () => void; onSave: (record: AttendanceRecord) => void;
+}) {
+  const initialStatus = initialRecord ? getRecordStatus(initialRecord) : "present";
+  const initialSubjectIdValue = initialRecord?.subjectId ?? initialSubjectId ?? subjects[0]?.id ?? "";
+  const [subjectId, setSubjectId] = useState(initialSubjectIdValue);
+  const [date, setDate] = useState(initialRecord?.date ?? initialDate ?? dateKey(new Date()));
+  const [periods, setPeriods] = useState(initialRecord?.periods ?? 1);
+  const [status, setStatus] = useState<"present" | "absent" | "partial">(initialStatus);
+  const [attended, setAttended] = useState(initialRecord?.attended ?? 1);
+  const [note, setNote] = useState(initialRecord?.note ?? "");
+  const [error, setError] = useState("");
+
+  function changePeriods(value: number) {
+    const next = Math.max(1, Math.min(12, value || 1));
+    setPeriods(next);
+    if (status === "present") setAttended(next);
+    else if (status === "absent") setAttended(0);
+    else setAttended((current) => Math.min(current, next));
+  }
+  function changeStatus(value: "present" | "absent" | "partial") {
+    setStatus(value);
+    if (value === "present") setAttended(periods);
+    if (value === "absent") setAttended(0);
+  }
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (!subjectId) { setError("Choose a subject first."); return; }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) { setError("Choose a valid class date."); return; }
+    if (periods < 1 || periods > 12) { setError("Periods must be between 1 and 12."); return; }
+    const countAttended = status === "present" ? periods : status === "absent" ? 0 : attended;
+    if (countAttended < 0 || countAttended > periods) { setError("Attended periods must be between 0 and the total periods."); return; }
+    onSave({
+      id: initialRecord?.id ?? createId(),
+      subjectId,
+      date,
+      periods,
+      attended: countAttended,
+      ...(note.trim() ? { note: note.trim() } : {}),
+    });
+  }
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title">
+      <div className="modal-header"><div><h2 id="attendance-modal-title">{initialRecord ? "Edit class record" : "Log attendance"}</h2><p>Save the class against its date and subject.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
+      <form className="modal-form" onSubmit={submit}>
+        <label className="field-label">Subject
+          <select required value={subjectId} onChange={(event) => setSubjectId(event.target.value)}>
+            {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}{subject.archived ? " · archived" : ""}</option>)}
+          </select>
+        </label>
+        <label className="field-label">Class date<input type="date" required value={date} onChange={(event) => setDate(event.target.value)}/></label>
+        <div className="form-two-col">
+          <label className="field-label">Periods conducted<input type="number" min="1" max="12" required value={periods} onChange={(event) => changePeriods(Number(event.target.value))}/></label>
+          <label className="field-label">Attendance status<select value={status} onChange={(event) => changeStatus(event.target.value as "present" | "absent" | "partial")}><option value="present">Present</option><option value="absent">Absent</option><option value="partial">Partially attended</option></select></label>
+        </div>
+        {status === "partial" && <label className="field-label">Periods attended<input type="number" min="0" max={periods} value={attended} onChange={(event) => setAttended(Math.max(0, Math.min(periods, Number(event.target.value) || 0)))}/></label>}
+        <label className="field-label">Note <span className="optional-label">Optional</span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={140} placeholder="Room change, lab, or a short note"/></label>
+        {date && <p className="modal-helper">This record will appear under <strong>{formatDay(date)}, {formatDate(date)}</strong>.</p>}
+        {error && <p className="form-message form-error" role="alert">{error}</p>}
+        <div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit"><Icon name="check"/>{initialRecord ? "Save changes" : "Save attendance"}</button></div>
+      </form>
+    </section>
+  </div>;
+}
+
+const subjectColors = ["#4f8f78", "#d38b55", "#7785c2", "#bc7186", "#5e9bad", "#8d9c58", "#9b79b3"];
+
+function SubjectModal({
+  subject, semesterId, defaultTarget, onClose, onSave,
+}: {
+  subject?: Subject; semesterId: string; defaultTarget: number; onClose: () => void; onSave: (subject: Subject) => void;
+}) {
+  const [name, setName] = useState(subject?.name ?? "");
+  const [code, setCode] = useState(subject?.code ?? "");
+  const [credits, setCredits] = useState(subject?.credits ?? 3);
+  const [required, setRequired] = useState(subject?.requiredAttendance ?? defaultTarget);
+  const [color, setColor] = useState(subject?.color ?? subjectColors[0]);
+  const [error, setError] = useState("");
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!name.trim()) { setError("Enter a subject name."); return; }
+    if (required < 75 || required > 100) { setError("A subject target must be from 75% to 100%."); return; }
+    onSave({
+      id: subject?.id ?? createId(),
+      semesterId,
+      name: name.trim(),
+      code: code.trim(),
+      credits: Math.max(1, Math.min(10, credits || 1)),
+      requiredAttendance: required,
+      color,
+      archived: subject?.archived ?? false,
+    });
+  }
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="subject-modal-title">
+      <div className="modal-header"><div><h2 id="subject-modal-title">{subject ? "Edit subject" : "Add a subject"}</h2><p>Keep subject details here and manage your week in Timetable.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
+      <form className="modal-form" onSubmit={submit}>
+        <label className="field-label">Subject name<input autoFocus required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Database Systems"/></label>
+        <div className="form-two-col">
+          <label className="field-label">Subject code <span className="optional-label">Optional</span><input maxLength={20} value={code} onChange={(event) => setCode(event.target.value)} placeholder="e.g. CS 301"/></label>
+          <label className="field-label">Credits<input type="number" min="1" max="10" value={credits} onChange={(event) => setCredits(Number(event.target.value))}/></label>
+        </div>
+        <div className="form-two-col">
+          <label className="field-label">Required attendance (%)<input type="number" min="75" max="100" value={required} onChange={(event) => setRequired(Math.max(75, Math.min(100, Number(event.target.value) || 75)))}/></label>
+          <label className="field-label">Subject color<select value={color} onChange={(event) => setColor(event.target.value)}>{subjectColors.map((value, index) => <option value={value} key={value}>Color {index + 1}</option>)}</select></label>
+        </div>
+        <p className="modal-helper">The subject floor can be raised, but it cannot be set below 75%.</p>
+        {error && <p className="form-message form-error" role="alert">{error}</p>}
+        <div className="modal-actions"><button className="button button-quiet" type="button" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit"><Icon name="check"/>{subject ? "Save subject" : "Add subject"}</button></div>
+      </form>
+    </section>
+  </div>;
+}
+
+function SemesterModal({ onClose, onSave }: { onClose: () => void; onSave: (semester: Semester) => void }) {
+  const [name, setName] = useState("");
+  const [startDate, setStartDate] = useState(dateKey(new Date()));
+  const [endDate, setEndDate] = useState("");
+  const [error, setError] = useState("");
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!name.trim()) { setError("Give this semester a name."); return; }
+    if (endDate && endDate < startDate) { setError("The end date must be after the start date."); return; }
+    onSave({ id: createId(), name: name.trim(), startDate, endDate, archived: false });
+  }
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="semester-modal-title">
+      <div className="modal-header"><div><h2 id="semester-modal-title">Create a semester</h2><p>Attendance records and subjects will be grouped in this term.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
+      <form className="modal-form" onSubmit={submit}>
+        <label className="field-label">Semester name<input autoFocus required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Semester 06"/></label>
+        <div className="form-two-col"><label className="field-label">Start date<input type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)}/></label><label className="field-label">End date <span className="optional-label">Optional</span><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)}/></label></div>
+        {error && <p className="form-message form-error" role="alert">{error}</p>}
+        <div className="modal-actions"><button className="button button-quiet" type="button" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit"><Icon name="check"/>Create semester</button></div>
+      </form>
+    </section>
+  </div>;
+}
+
+function ConfirmModal({ title, copy, action, onClose, onConfirm }: { title: string; copy: string; action: string; onClose: () => void; onConfirm: () => void }) {
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+      <div className="modal-header"><div><h2 id="confirm-modal-title">{title}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
+      <p className="confirm-copy">{copy}</p>
+      <div className="modal-actions"><button className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-danger" onClick={onConfirm}><Icon name="archive"/>{action}</button></div>
+    </section>
+  </div>;
+}
