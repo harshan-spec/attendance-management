@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 const RECORD_PAGE_SIZE = 1000;
 const MAX_WORKSPACE_RECORDS = 10_000;
+const MAX_WORKSPACE_PAYLOAD_BYTES = 4_000_000;
 
 type AttendanceRow = {
   id: string;
@@ -178,7 +179,11 @@ export async function GET() {
     } : { overallTarget: 80, defaultSubjectTarget: 75, theme: "light" },
   };
 
-  return Response.json({ workspace }, { headers: { "Cache-Control": "no-store" } });
+  const responseBody = JSON.stringify({ workspace });
+  if (new TextEncoder().encode(responseBody).byteLength > MAX_WORKSPACE_PAYLOAD_BYTES) {
+    return Response.json({ error: "This workspace is too large to load in one request." }, { status: 413, headers: { "Cache-Control": "no-store" } });
+  }
+  return new Response(responseBody, { headers: { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" } });
 }
 
 export async function PUT(request: Request) {
@@ -188,7 +193,7 @@ export async function PUT(request: Request) {
   if (!user) return unauthorized();
 
   const body = await request.text();
-  if (body.length > 1_500_000) return Response.json({ error: "This workspace is too large to save." }, { status: 413 });
+  if (new TextEncoder().encode(body).byteLength > MAX_WORKSPACE_PAYLOAD_BYTES) return Response.json({ error: "This workspace is too large to save." }, { status: 413 });
   let payload: unknown;
   try {
     payload = JSON.parse(body);
