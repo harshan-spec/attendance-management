@@ -121,14 +121,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .signup-progress span.active b, .signup-progress span.complete b { border-color: #b5d8c7; color: #356b55; background: #edf6f1; }
 .signup-progress i { width: 27px; height: 1px; background: #dce5e1; }
 .signup-profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px 12px; }
-.signup-profile-grid .signup-department-field, .signup-timetable-status { grid-column: 1 / -1; }
-.signup-timetable-status { display: flex; align-items: flex-start; gap: 9px; min-height: 47px; padding: 11px 12px; border: 1px solid #dce8e1; border-radius: 9px; color: #687e77; background: #f5f9f6; font-size: 11px; font-weight: 470; line-height: 1.45; }
-.signup-timetable-status svg { width: 16px; height: 16px; flex: 0 0 16px; margin-top: 1px; }
-.signup-timetable-status.loading { border-color: #d8e6e3; color: #607a78; background: #f3f8f8; }
-.signup-timetable-status.loading svg { animation: signup-status-spin 1.2s linear infinite; }
-.signup-timetable-status.found { border-color: #d0e6d9; color: #356b50; background: #f0f8f2; }
-.signup-timetable-status.missing, .signup-timetable-status.unavailable, .signup-timetable-status.idle { border-color: #eadfc9; color: #80663c; background: #fbf8f0; }
-.signup-timetable-status button { margin-left: auto; flex: 0 0 auto; color: #397664; cursor: pointer; font-size: 11px; font-weight: 680; white-space: nowrap; }
+.signup-profile-grid .signup-department-field { grid-column: 1 / -1; }
 .signup-step-actions { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 10px; }
 .signup-step-actions .button-dark { min-width: 175px; margin-left: auto; }
 @keyframes signup-status-spin { to { transform: rotate(360deg); } }
@@ -579,7 +572,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .auth-form-side { padding-right: 19px; padding-left: 19px; }
   .auth-form-heading h2 { font-size: 30px; }
   .signup-profile-grid { grid-template-columns: 1fr; }
-  .signup-profile-grid .signup-department-field, .signup-timetable-status, .signup-step-actions { grid-column: auto; }
+  .signup-profile-grid .signup-department-field, .signup-step-actions { grid-column: auto; }
   .signup-step-actions .button-dark { min-width: 0; }
   .signup-progress { gap: 7px; font-size: 10px; }
   .signup-progress i { width: 15px; }

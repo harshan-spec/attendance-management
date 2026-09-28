@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useAttendlyAuth } from "@/lib/auth-context";
 import { SVCE_FALLBACK_OPTIONS, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
-import { Icon } from "@/app/dashboard/Icons";
 
 type AuthMode = "login" | "signup" | "forgot" | "update";
 
@@ -35,8 +34,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   const [studyYear, setStudyYear] = useState("");
   const [semester, setSemester] = useState("");
   const [section, setSection] = useState("none");
-  const [lookupAttempt, setLookupAttempt] = useState(0);
-  const [timetableLookup, setTimetableLookup] = useState<{ status: "idle" | "loading" | "found" | "missing" | "unavailable"; pdfUrl: string | null; message: string }>({ status: "idle", pdfUrl: null, message: "" });
+  const [collegeTimetableUrl, setCollegeTimetableUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode !== "update" || !supabaseConfigured) return;
@@ -77,25 +75,21 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   }, [mode]);
 
   useEffect(() => {
+    setCollegeTimetableUrl(null);
     if (mode !== "signup" || signupStep !== 2 || !department || !academicYear || !studyYear || !semester) return;
     const controller = new AbortController();
-    setTimetableLookup({ status: "loading", pdfUrl: null, message: "Checking the college timetable…" });
     const params = new URLSearchParams({ department, academicYear, studyYear, semester, section });
     fetch(`/api/svce-timetable?${params.toString()}`, { signal: controller.signal })
       .then((response) => response.json())
-      .then((result: { found?: boolean; pdfUrl?: string; message?: string }) => {
+      .then((result: { found?: boolean; pdfUrl?: string }) => {
         if (controller.signal.aborted) return;
-        if (result.found && typeof result.pdfUrl === "string") {
-          setTimetableLookup({ status: "found", pdfUrl: result.pdfUrl, message: "Official college timetable found. It will appear in your Timetable section after signup." });
-        } else {
-          setTimetableLookup({ status: "missing", pdfUrl: null, message: result.message || "No matching timetable was published. Your editable timetable will remain available." });
-        }
+        setCollegeTimetableUrl(result.found && typeof result.pdfUrl === "string" ? result.pdfUrl : null);
       })
       .catch(() => {
-        if (!controller.signal.aborted) setTimetableLookup({ status: "unavailable", pdfUrl: null, message: "Could not reach the college timetable. Your editable timetable will remain available." });
+        if (!controller.signal.aborted) setCollegeTimetableUrl(null);
       });
     return () => controller.abort();
-  }, [mode, signupStep, department, academicYear, studyYear, semester, section, lookupAttempt]);
+  }, [mode, signupStep, department, academicYear, studyYear, semester, section]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -125,7 +119,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           semester: semesterNumber,
           academicYear: selectedAcademicYear.label,
           academicYearCode: selectedAcademicYear.value,
-          collegeTimetableUrl: timetableLookup.pdfUrl,
+          collegeTimetableUrl,
         };
         const needsConfirmation = await signUp(name.trim(), email, password, academicProfile);
         if (needsConfirmation) {
@@ -200,7 +194,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           <div className="auth-form-heading">
             <div className="eyebrow auth-form-eyebrow">{mode === "signup" ? signupStep === 1 ? "A BETTER SEMESTER STARTS HERE" : "YOUR ACADEMIC PROFILE" : mode === "update" ? "SECURE ACCOUNT RECOVERY" : "YOUR ATTENDANCE SPACE"}</div>
             <h2>{mode === "signup" && signupStep === 2 ? "Your semester" : copy[mode].heading}</h2>
-            <p>{mode === "signup" && signupStep === 2 ? "Add your college details. We’ll look for the matching timetable automatically." : copy[mode].detail}</p>
+            <p>{mode === "signup" && signupStep === 2 ? "Add your department and current semester details." : copy[mode].detail}</p>
           </div>
 
           {mode === "signup" && <div className="signup-progress" aria-label={`Signup step ${signupStep} of 2`}>
@@ -234,11 +228,6 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
                   {academicOptions.sections.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
                 </select>
               </label>
-              <div className={`signup-timetable-status ${timetableLookup.status}`} role="status">
-                <Icon name={timetableLookup.status === "found" ? "check-circle" : timetableLookup.status === "loading" ? "refresh" : "alert"}/>
-                <span>{timetableLookup.message || "Complete these details to search the official college timetable."}</span>
-                {(timetableLookup.status === "missing" || timetableLookup.status === "unavailable") && <button type="button" onClick={() => setLookupAttempt((attempt) => attempt + 1)}>Try again</button>}
-              </div>
             </div> : <>
               {mode === "signup" && <label className="field-label">
                 Full name
@@ -264,7 +253,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
             )}
             {mode === "signup" ? signupStep === 1 ? <button className="button button-dark auth-submit" type="submit" disabled={busy}>Continue <ArrowRight /></button> : <div className="signup-step-actions">
               <button className="button button-outline" type="button" onClick={() => { setError(""); setSignupStep(1); }}>Back</button>
-              <button className="button button-dark" type="submit" disabled={busy || !supabaseConfigured || !department || !academicYear || !studyYear || !semester || timetableLookup.status === "idle" || timetableLookup.status === "loading"}>
+              <button className="button button-dark" type="submit" disabled={busy || !supabaseConfigured || !department || !academicYear || !studyYear || !semester}>
                 {busy ? "Please wait…" : "Create account"}{!busy && <ArrowRight />}
               </button>
             </div> : <button className="button button-dark auth-submit" type="submit" disabled={busy || !supabaseConfigured || (mode === "update" && (!ready || !user || !recoveryVerified || recoveryChecking))}>

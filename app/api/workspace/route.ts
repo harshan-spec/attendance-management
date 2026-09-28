@@ -1,8 +1,21 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import type { WorkspaceData } from "@/lib/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
+
+const RECORD_PAGE_SIZE = 1000;
+const MAX_WORKSPACE_RECORDS = 10_000;
+
+type AttendanceRow = {
+  id: string;
+  subject_id: string;
+  attendance_date: string;
+  periods: number;
+  attended: number;
+  note: string | null;
+};
 
 type JsonObject = Record<string, unknown>;
 
@@ -71,6 +84,31 @@ function isWorkspace(value: unknown): value is WorkspaceData {
     (settings.theme === "light" || settings.theme === "dark");
 }
 
+async function loadAttendanceRecords(supabase: SupabaseClient) {
+  const records: AttendanceRow[] = [];
+  for (let offset = 0; offset < MAX_WORKSPACE_RECORDS; offset += RECORD_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("attendance_records")
+      .select("id,subject_id,attendance_date,periods,attended,note")
+      .order("attendance_date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + RECORD_PAGE_SIZE - 1);
+    if (error) return { records: null, error: error.message, tooMany: false };
+
+    const page = (data ?? []) as AttendanceRow[];
+    records.push(...page);
+    if (page.length < RECORD_PAGE_SIZE) return { records, error: null, tooMany: false };
+  }
+
+  const { data: overflow, error } = await supabase
+    .from("attendance_records")
+    .select("id")
+    .range(MAX_WORKSPACE_RECORDS, MAX_WORKSPACE_RECORDS);
+  if (error) return { records: null, error: error.message, tooMany: false };
+  if (overflow?.length) return { records: null, error: null, tooMany: true };
+  return { records, error: null, tooMany: false };
+}
+
 function serviceUnavailable() {
   return Response.json({ error: "Supabase is not configured for this deployment." }, { status: 503, headers: { "Cache-Control": "no-store" } });
 }
@@ -88,12 +126,15 @@ export async function GET() {
   const [semesterResult, subjectResult, recordResult, timetableResult, settingsResult] = await Promise.all([
     supabase.from("semesters").select("id,name,start_date,end_date,is_archived,is_active").order("start_date", { ascending: true }),
     supabase.from("subjects").select("id,semester_id,name,code,credits,required_attendance,color,is_archived").order("name", { ascending: true }),
-    supabase.from("attendance_records").select("id,subject_id,attendance_date,periods,attended,note").order("attendance_date", { ascending: false }),
+    loadAttendanceRecords(supabase),
     supabase.from("timetable_entries").select("semester_id,subject_id,weekday,hour").order("weekday", { ascending: true }).order("hour", { ascending: true }),
     supabase.from("attendance_settings").select("overall_target,default_subject_target,theme").maybeSingle(),
   ]);
-  const failed = [semesterResult, subjectResult, recordResult, timetableResult, settingsResult].some((result) => result.error);
-  if (failed) return Response.json({ error: "Your workspace could not be loaded. Please try again." }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  if (recordResult.tooMany) {
+    return Response.json({ error: "This workspace has more than 10,000 class records and cannot be loaded safely." }, { status: 413, headers: { "Cache-Control": "no-store" } });
+  }
+  const failed = [semesterResult, subjectResult, timetableResult, settingsResult].some((result) => result.error) || Boolean(recordResult.error);
+  if (failed || !recordResult.records) return Response.json({ error: "Your workspace could not be loaded. Please try again." }, { status: 500, headers: { "Cache-Control": "no-store" } });
 
   const semesters = (semesterResult.data ?? []).map((semester) => ({
     id: semester.id,
@@ -116,7 +157,7 @@ export async function GET() {
       color: subject.color,
       archived: subject.is_archived,
     })),
-    records: (recordResult.data ?? []).map((record) => ({
+    records: recordResult.records.map((record) => ({
       id: record.id,
       subjectId: record.subject_id,
       date: record.attendance_date,
