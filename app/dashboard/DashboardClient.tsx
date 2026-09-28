@@ -8,6 +8,7 @@ import { createSampleWorkspace } from "@/lib/sample-data";
 import type { AttendanceRecord, Semester, Subject, TimetableEntry, WorkspaceData, WorkspaceSettings } from "@/lib/types";
 import { getStudyYearLabel, type StudentAcademicProfile } from "@/lib/svce-timetable";
 import { renderTimetablePdfPages } from "@/lib/svce-timetable-render";
+import { readCachedCollegeTimetable, writeCachedCollegeTimetable } from "@/lib/college-timetable-cache";
 import { createId } from "@/lib/id";
 import { Icon, type IconName } from "@/app/dashboard/Icons";
 
@@ -692,19 +693,34 @@ function TimetableView({
       attempt: String(collegeRefresh),
     });
 
+    const cacheKey = `svce:v1:${profileKey}`;
     setCollegePdf({
       status: "loading",
       images: [],
-      message: collegeRefresh > 0 ? "Refreshing the official college timetable…" : "Fetching your matching college timetable…",
+      message: collegeRefresh > 0 ? "Refreshing the official college timetable…" : "Loading your saved college timetable…",
     });
-    fetch(`/api/svce-timetable?${params.toString()}`, { signal: controller.signal, cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok || !response.headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
-          throw new Error("The matching college timetable could not be fetched. Your editable weekday timetable is still available below.");
-        }
-        return response.arrayBuffer();
-      })
-      .then(renderTimetablePdfPages)
+
+    async function loadCollegePdf() {
+      if (collegeRefresh === 0) {
+        const cachedPdf = await readCachedCollegeTimetable(cacheKey);
+        if (cachedPdf) return cachedPdf;
+      }
+
+      if (!controller.signal.aborted) {
+        setCollegePdf({ status: "loading", images: [], message: "Fetching your matching college timetable…" });
+      }
+      const response = await fetch(`/api/svce-timetable?${params.toString()}`, { signal: controller.signal, cache: "no-store" });
+      if (!response.ok || !response.headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
+        throw new Error("The matching college timetable could not be fetched. Your editable weekday timetable is still available below.");
+      }
+
+      const pdfBytes = await response.arrayBuffer();
+      await writeCachedCollegeTimetable(cacheKey, pdfBytes);
+      return pdfBytes;
+    }
+
+    loadCollegePdf()
+      .then((pdfBytes) => controller.signal.aborted ? [] : renderTimetablePdfPages(pdfBytes))
       .then((images) => {
         if (controller.signal.aborted) {
           images.forEach((url) => URL.revokeObjectURL(url));
