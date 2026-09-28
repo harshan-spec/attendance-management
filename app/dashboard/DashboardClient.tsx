@@ -717,7 +717,9 @@ function TimetableView({
         if (!controller.signal.aborted) setCollegePdf({
           status: "unavailable",
           images: [],
-          message: error instanceof Error ? error.message : "The college timetable could not be previewed. Your editable weekday timetable is still available below.",
+          message: error instanceof Error && error.message.includes("toHex is not a function")
+            ? "The college timetable could not be previewed. Please refresh to try again. Your editable weekday timetable is still available below."
+            : error instanceof Error ? error.message : "The college timetable could not be previewed. Your editable weekday timetable is still available below.",
         });
       });
 

@@ -1,7 +1,7 @@
-const PDF_WORKER_PATH = "/pdf.worker.min.mjs";
+const PDF_WORKER_PATH = "/pdf.worker.min.mjs?v=6.3.289-legacy";
 
 export async function renderTimetablePdfPages(pdfBytes: ArrayBuffer): Promise<string[]> {
-  const pdfjs = await import("pdfjs-dist");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_PATH;
   const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBytes) });
   const imageUrls: string[] = [];
