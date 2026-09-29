@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { formatPercentage } from "@/lib/attendance";
 import { Icon } from "@/app/dashboard/Icons";
+import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
 
 export function AttendanceCalculator() {
   const [attendedText, setAttendedText] = useState("42");
@@ -65,6 +66,6 @@ export function AttendanceCalculator() {
         <details><summary>Can I track attendance by day?</summary><p>Yes. In your Attendly dashboard, each class record includes its date, day, subject, period count, and present or absent status.</p></details>
       </section>
     </main>
-    <footer className="calculator-footer">Attendly · Built for clearer semesters</footer>
+    <footer className="calculator-footer"><span>Attendly · Built for clearer semesters</span><PublicLegalLinks /></footer>
   </div>;
 }

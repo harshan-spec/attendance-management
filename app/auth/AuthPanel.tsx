@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useAttendlyAuth } from "@/lib/auth-context";
 import { SVCE_FALLBACK_OPTIONS, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
+import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
 
 type AuthMode = "login" | "signup" | "forgot" | "update";
 
@@ -288,7 +289,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           </div>
           <Link href="/attendance-calculator" className="auth-calculator-link">Try the public attendance calculator <ArrowUpRight /></Link>
         </div>
-        <div className="auth-footnote"><span>Private by design</span><span>Made for your next class</span></div>
+        <div className="auth-footnote"><span>Private by design</span><PublicLegalLinks className="auth-legal-links" /></div>
       </section>
     </main>
   );

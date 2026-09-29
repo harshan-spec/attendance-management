@@ -11,6 +11,7 @@ import { renderTimetablePdfPages } from "@/lib/svce-timetable-render";
 import { readCachedCollegeTimetable, writeCachedCollegeTimetable } from "@/lib/college-timetable-cache";
 import { createId } from "@/lib/id";
 import { Icon, type IconName } from "@/app/dashboard/Icons";
+import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
 
 type ViewKey = "overview" | "subjects" | "attendance" | "calendar" | "timetable" | "planner" | "reports" | "semesters" | "settings";
 type DialogState =
@@ -1164,6 +1165,7 @@ function SettingsView({ settings, preview, onSave, onDeleteAccount }: {
     <section className="card settings-card"><h2>Appearance and data</h2><p>Choose how Attendly looks on this device.</p>
       <label className="settings-field"><span><strong>Color theme</strong><span>Applies to your dashboard in this browser.</span></span><select className="setting-select" value={draft.theme} onChange={(event) => setDraft({ ...draft, theme: event.target.value as WorkspaceSettings["theme"] })}><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <div className="settings-note">{process.env.NEXT_PUBLIC_SUPABASE_URL ? "Your attendance, subjects, semesters, timetable, and targets sync to your Supabase account. Row-level security keeps each student’s data private." : "This front-end preview saves attendance in this browser only. Connect Supabase Auth and PostgreSQL before using it for real records."}</div>
+      <PublicLegalLinks className="settings-legal-links" />
       <button className="button button-primary settings-save" onClick={() => onSave(draft)}><Icon name="check"/>Save settings</button>
     </section>
     <section className="card settings-card delete-account-card"><h2>Delete account</h2><p>Remove your Attendly account and permanently erase its saved data.</p>

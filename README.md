@@ -13,6 +13,8 @@ Open `http://localhost:3000`. Without Supabase credentials, choose **Explore the
 
 The Attendly Supabase project is connected for local development through `.env.local` (ignored by Git). To use another project, copy `.env.example` to `.env.local` and add its project URL and publishable key.
 
+Set `NEXT_PUBLIC_SUPPORT_EMAIL` to the public support address shown on Attendly's Contact page. It is optional during local development; without it, the page explains account recovery and self-service deletion options.
+
 Run the SQL migrations in `supabase/migrations/` in timestamp order when setting up a fresh Supabase project. The connected Attendly project already has these migrations applied. They create student profiles, semesters, subjects, dated attendance records, weekday timetable entries, account settings, ownership policies, and the transactional workspace save function.
 
 Deploy `supabase/functions/delete-attendly-account/index.ts` as the `delete-attendly-account` Supabase Edge Function with JWT verification enabled. It re-verifies the signed-in user before permanently deleting the Auth account; the database foreign keys remove that account’s Attendly records. The function uses Supabase’s server-provided secret key and never sends it to the browser. The connected Attendly project already has this function deployed.
