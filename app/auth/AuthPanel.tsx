@@ -163,9 +163,14 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
       }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Something went wrong. Please try again.";
-      setError(mode === "forgot" && /rate.?limit|too many requests/i.test(message)
-        ? "Supabase has temporarily limited reset emails. Wait at least a minute before trying again. If it continues, the project’s hourly email limit may also be reached."
-        : message);
+      const requestingEmail = mode === "signup" || mode === "forgot";
+      const emailRateLimited = /rate.?limit|too many requests|request this after \d+ seconds/i.test(message);
+      const emailDeliveryFailed = /error sending .*email|failed to send .*email/i.test(message);
+      setError(requestingEmail && emailRateLimited
+        ? "Wait at least a minute before requesting another email for this address. Then check your inbox and spam folder."
+        : requestingEmail && emailDeliveryFailed
+          ? "Attendly could not send the email just now. Wait a minute and try again; if it continues, email delivery may be temporarily unavailable."
+          : message);
     } finally {
       setBusy(false);
     }
