@@ -95,6 +95,17 @@ export function classesNeeded(
   return answer;
 }
 
+export function classesToAttendWithinUpcoming(
+  totals: AttendanceTotals,
+  targetPercent: number,
+  upcomingClasses: number,
+): number | null {
+  if (upcomingClasses <= 0 && totals.conducted === 0) return null;
+  const target = targetPercent / 100;
+  const required = target * (totals.conducted + upcomingClasses) - totals.attended;
+  return Math.max(0, Math.ceil(required - 1e-10));
+}
+
 export function classesThatCanBeMissed(
   totals: AttendanceTotals,
   targetPercent: number,

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAttendlyAuth } from "@/lib/auth-context";
-import { afterAttending, afterMissing, classesNeeded, classesThatCanBeMissed, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals } from "@/lib/attendance";
+import { afterAttending, afterMissing, classesNeeded, classesThatCanBeMissed, classesToAttendWithinUpcoming, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals } from "@/lib/attendance";
 import { createSampleWorkspace } from "@/lib/sample-data";
 import type { AttendanceRecord, Semester, Subject, TimetableEntry, WorkspaceData, WorkspaceSettings } from "@/lib/types";
 import { getStudyYearLabel, SVCE_FALLBACK_OPTIONS, type CollegeSelectOption, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
@@ -925,7 +925,8 @@ function PlannerView({ subjects, records, overallTarget, timetable }: {
   const current = getTotals(records);
   const attendAllScenario = afterAttending(current, futureClasses);
   const missAllScenario = afterMissing(current, futureClasses);
-  const neededOverall = classesNeeded(current, overallRequirement);
+  const neededOverall = classesToAttendWithinUpcoming(current, overallRequirement, futureClasses);
+  const consecutiveNeededOverall = classesNeeded(current, overallRequirement);
   const canMissOverall = classesThatCanBeMissed(current, overallRequirement);
   const plannedOverall = totalAssigned === futureClasses && current.conducted + totalAssigned > 0
     ? ((current.attended + totalPlannedAttended) / (current.conducted + totalAssigned)) * 100
@@ -975,20 +976,21 @@ function PlannerView({ subjects, records, overallTarget, timetable }: {
     <div className="planner-results">
       <div className="card planner-result"><div className="overline">ATTEND ALL {futureClasses}</div><strong>{formatPercentage(attendAllScenario)}</strong><p>Projected overall attendance if you attend every upcoming period.</p></div>
       <div className="card planner-result"><div className="overline">MISS ALL {futureClasses}</div><strong>{formatPercentage(missAllScenario)}</strong><p>Projected overall attendance if you miss every upcoming period.</p></div>
-      <div className="card planner-result"><div className="overline">ATTEND TO REACH {overallRequirement}% OVERALL</div><strong>{neededOverall === null ? "Not reachable" : neededOverall === 0 ? "Target met" : `${neededOverall} classes`}</strong><p>{neededOverall === null ? "A 100% target cannot be reached after an absence." : neededOverall === 0 ? "You are already at or above the overall target." : "Attend consecutively with no further absences."}</p></div>
-      <div className="card planner-result"><div className="overline">SAFE ABSENCES AT {overallRequirement}% OVERALL</div><strong>{current.percentage !== null && current.percentage < overallRequirement ? "0 for now" : canMissOverall === null ? "No limit" : `${canMissOverall} classes`}</strong><p>{current.percentage !== null && current.percentage < overallRequirement ? `Attend ${neededOverall ?? 0} classes first to recover.` : "Maximum absences before falling below the target."}</p></div>
+      <div className="card planner-result"><div className="overline">ATTEND TO MEET {overallRequirement}% OVERALL</div><strong>{futureClasses === 0 ? "No periods" : neededOverall === null ? "Not reachable" : neededOverall > futureClasses ? `Not within ${futureClasses}` : `${neededOverall} of ${futureClasses}`}</strong><p>{futureClasses === 0 ? "Set an upcoming period count to calculate how many to attend." : neededOverall === null ? "A 100% target cannot be reached after a previous absence." : neededOverall > futureClasses ? consecutiveNeededOverall === null ? `Even attending all ${futureClasses} will not restore ${overallRequirement}%.` : `Attend all ${futureClasses}; then attend ${Math.max(0, consecutiveNeededOverall - futureClasses)} more consecutively to reach ${overallRequirement}%.` : neededOverall === 0 ? `You can miss all ${futureClasses} and remain at or above ${overallRequirement}%.` : `Attend at least ${neededOverall} of these ${futureClasses}; the remaining ${futureClasses - neededOverall} can be missed.`}</p></div>
+      <div className="card planner-result"><div className="overline">SAFE ABSENCES AT {overallRequirement}% OVERALL</div><strong>{current.percentage !== null && current.percentage < overallRequirement ? "0 for now" : canMissOverall === null ? "No limit" : `${canMissOverall} classes`}</strong><p>{current.percentage !== null && current.percentage < overallRequirement ? `Attend ${consecutiveNeededOverall ?? 0} classes consecutively to recover.` : "Maximum absences before falling below the target."}</p></div>
     </div>
 
     <section className="card planner-subject-section">
       <div className="planner-section-heading"><div><h2>Subject-by-subject plan</h2><p>Upcoming periods default to the next {futureClasses} slots in your saved timetable. Adjust the counts for holidays or schedule changes.</p></div></div>
       {subjects.length === 0 ? <div className="planner-empty">Add subjects to see each subject’s 75% target, recovery classes, and safe absences here.</div> : <>
         {totalAssigned !== futureClasses ? <div className="planner-allocation-note" role="status"><Icon name="alert"/><span>{!hasScheduledSubjects ? "No periods are assigned to active subjects in this timetable. Enter each subject’s upcoming periods manually. " : "The timetable allocation does not match your forecast. Edit the upcoming-period counts to match the classes you expect. "}{totalAssigned < futureClasses ? `${futureClasses - totalAssigned} of ${futureClasses} periods still need assigning.` : `${totalAssigned - futureClasses} periods are assigned above the ${futureClasses}-period forecast.`} The mixed overall projection appears when the total matches.</span></div> : <div className="planner-mixed-summary"><div><span className="overline">YOUR MIXED PLAN · OVERALL</span><strong>{formatPercentage(plannedOverall)}</strong></div><p>Attending {totalPlannedAttended} and missing {totalAssigned - totalPlannedAttended} of the next {futureClasses} periods, based on the subject plan below.</p></div>}
-        <div className="planner-table-wrap"><table className="planner-table"><thead><tr><th>Subject · current attendance</th><th>Upcoming</th><th>Plan to attend</th><th>If attend all</th><th>If miss all</th><th>Your plan</th><th>Attend to reach target</th><th>Can miss at target</th></tr></thead><tbody>
+        <div className="planner-table-wrap"><table className="planner-table"><thead><tr><th>Subject · current attendance</th><th>Upcoming</th><th>Plan to attend</th><th>If attend all</th><th>If miss all</th><th>Your plan</th><th>Attend to meet target</th><th>Can miss at target</th></tr></thead><tbody>
           {subjects.map((subject, index) => {
             const subjectTotals = getSubjectTotals(records, subject.id);
             const plan = plans[index];
             const subjectTarget = Math.max(75, subject.requiredAttendance);
-            const subjectNeeded = classesNeeded(subjectTotals, subjectTarget);
+            const subjectNeeded = classesToAttendWithinUpcoming(subjectTotals, subjectTarget, plan.upcoming);
+            const subjectConsecutiveNeeded = classesNeeded(subjectTotals, subjectTarget);
             const subjectCanMiss = classesThatCanBeMissed(subjectTotals, subjectTarget);
             const attendedProjection = afterAttending(subjectTotals, plan.upcoming);
             const missedProjection = afterMissing(subjectTotals, plan.upcoming);
@@ -1002,12 +1004,12 @@ function PlannerView({ subjects, records, overallTarget, timetable }: {
               <td>{formatPercentage(attendedProjection)}</td>
               <td>{formatPercentage(missedProjection)}</td>
               <td><strong>{formatPercentage(mixedProjection)}</strong><small>{plan.attend} attend · {plan.upcoming - plan.attend} miss</small></td>
-              <td>{subjectTotals.percentage !== null && subjectTotals.percentage >= subjectTarget ? "Target met" : subjectNeeded === null ? "Not reachable" : `${subjectNeeded} classes`}</td>
+              <td><strong>{plan.upcoming === 0 ? "No periods" : subjectNeeded === null ? "Not reachable" : subjectNeeded > plan.upcoming ? `Not within ${plan.upcoming}` : `${subjectNeeded} of ${plan.upcoming}`}</strong><small>{plan.upcoming === 0 ? "Enter upcoming periods for a forecast." : subjectNeeded === null ? `A 100% target cannot be restored after a previous absence.` : subjectNeeded > plan.upcoming ? subjectConsecutiveNeeded === null ? "The configured target cannot be reached." : `Attend all ${plan.upcoming}, then ${Math.max(0, subjectConsecutiveNeeded - plan.upcoming)} more consecutively. All-attend result: ${formatPercentage(attendedProjection)}.` : subjectNeeded === 0 ? `Your current buffer covers all ${plan.upcoming} periods.` : `Attend at least ${subjectNeeded}; up to ${plan.upcoming - subjectNeeded} may be missed.`}</small></td>
               <td>{subjectTotals.percentage !== null && subjectTotals.percentage < subjectTarget ? `0 now · attend ${subjectNeeded ?? 0} first` : subjectCanMiss === null ? "No limit" : `${subjectCanMiss} classes`}</td>
             </tr>;
           })}
         </tbody></table></div>
-        <p className="planner-method-note">“Can miss” is the maximum consecutive absences from your current totals while staying on or above that target. If a subject is below target, attend the recovery count first. Projections count each timetable period separately.</p>
+        <p className="planner-method-note">“Attend to meet target” is the minimum number of upcoming periods to attend if the rest are missed. “Can miss” is the maximum consecutive absences from your current totals while staying on or above the target. Projections count each timetable period separately.</p>
       </>}
     </section>
   </div>;
