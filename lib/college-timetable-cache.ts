@@ -5,6 +5,7 @@ const STORE_NAME = "pdfs";
 interface CachedTimetablePdf {
   key: string;
   bytes: ArrayBuffer;
+  sourceUrl?: string | null;
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -26,7 +27,7 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export async function readCachedCollegeTimetable(key: string): Promise<ArrayBuffer | null> {
+export async function readCachedCollegeTimetable(key: string): Promise<{ bytes: ArrayBuffer; sourceUrl: string | null } | null> {
   let database: IDBDatabase | undefined;
   try {
     database = await openDatabase();
@@ -36,7 +37,9 @@ export async function readCachedCollegeTimetable(key: string): Promise<ArrayBuff
       request.onsuccess = () => resolve(request.result as CachedTimetablePdf | undefined);
       request.onerror = () => reject(request.error ?? new Error("The timetable cache could not be read."));
     });
-    return record?.bytes instanceof ArrayBuffer ? record.bytes : null;
+    return record?.bytes instanceof ArrayBuffer
+      ? { bytes: record.bytes, sourceUrl: typeof record.sourceUrl === "string" ? record.sourceUrl : null }
+      : null;
   } catch {
     return null;
   } finally {
@@ -44,7 +47,7 @@ export async function readCachedCollegeTimetable(key: string): Promise<ArrayBuff
   }
 }
 
-export async function writeCachedCollegeTimetable(key: string, bytes: ArrayBuffer): Promise<void> {
+export async function writeCachedCollegeTimetable(key: string, bytes: ArrayBuffer, sourceUrl: string | null): Promise<void> {
   let database: IDBDatabase | undefined;
   try {
     database = await openDatabase();
@@ -53,7 +56,7 @@ export async function writeCachedCollegeTimetable(key: string, bytes: ArrayBuffe
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("The timetable cache could not be saved."));
       transaction.onabort = () => reject(transaction.error ?? new Error("The timetable cache write was interrupted."));
-      transaction.objectStore(STORE_NAME).put({ key, bytes: bytes.slice(0) } satisfies CachedTimetablePdf);
+      transaction.objectStore(STORE_NAME).put({ key, bytes: bytes.slice(0), sourceUrl } satisfies CachedTimetablePdf);
     });
   } catch {
     // The timetable can still be viewed when browser storage is unavailable.

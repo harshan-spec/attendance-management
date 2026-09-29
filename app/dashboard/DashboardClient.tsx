@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAttendlyAuth } from "@/lib/auth-context";
 import { afterAttending, afterMissing, classesNeeded, classesThatCanBeMissed, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals } from "@/lib/attendance";
@@ -646,6 +646,12 @@ function semesterBreaks(semesterName: string): TimetableBreak[] {
   return [];
 }
 
+function semesterNumberFromName(semesterName: string, fallback: number) {
+  const match = semesterName.match(/(?:semester|sem)[^\d]*(\d+)/i) ?? semesterName.match(/(\d+)/);
+  const semesterNumber = Number(match?.[1]);
+  return Number.isInteger(semesterNumber) && semesterNumber >= 1 && semesterNumber <= 8 ? semesterNumber : fallback;
+}
+
 function timetableKey(weekday: number, hour: number) { return `${weekday}-${hour}`; }
 
 function timetableDraft(entries: TimetableEntry[], semesterId: string) {
@@ -661,14 +667,19 @@ function TimetableView({
   const activeEntries = timetable.filter((entry) => entry.semesterId === semesterId);
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>(() => ({ [semesterId]: timetableDraft(timetable, semesterId) }));
   const [editingSemesters, setEditingSemesters] = useState<Record<string, boolean>>({});
-  const [collegeRefresh, setCollegeRefresh] = useState(0);
-  const [collegePdf, setCollegePdf] = useState<{ status: "loading" | "ready" | "unavailable"; images: string[]; message: string }>({ status: "loading", images: [], message: "Fetching your matching college timetable…" });
+  const [collegeRefresh, setCollegeRefresh] = useState<{ id: number; profileKey: string } | null>(null);
+  const refreshSequence = useRef(0);
+  const lastHandledRefresh = useRef(0);
+  const [collegePdf, setCollegePdf] = useState<{ status: "loading" | "ready" | "unavailable"; images: string[]; message: string; sourceUrl: string | null }>({ status: "loading", images: [], message: "Fetching your matching college timetable…", sourceUrl: null });
   const draft = drafts[semesterId] ?? timetableDraft(timetable, semesterId);
   const editing = editingSemesters[semesterId] ?? activeEntries.length === 0;
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
   const activeSubjects = subjects.filter((subject) => !subject.archived);
   const breaks = semesterBreaks(semesterName);
-  const profileKey = academicProfile ? [academicProfile.departmentCode, academicProfile.academicYearCode, academicProfile.studyYear, academicProfile.semester, academicProfile.sectionCode, academicProfile.collegeTimetableUrl].join("|") : "";
+  const collegeSemester = academicProfile ? semesterNumberFromName(semesterName, academicProfile.semester) : 0;
+  const collegeStudyYear = collegeSemester ? Math.ceil(collegeSemester / 2) : academicProfile?.studyYear ?? 0;
+  const savedSourceUrl = academicProfile && collegeSemester === academicProfile.semester ? academicProfile.collegeTimetableUrl : null;
+  const profileKey = academicProfile ? [academicProfile.departmentCode, academicProfile.academicYearCode, collegeStudyYear, collegeSemester, academicProfile.sectionCode, savedSourceUrl].join("|") : "";
   const columns: TimetableColumn[] = [];
   for (let hour = 1; hour <= 7; hour += 1) {
     columns.push({ kind: "hour", hour });
@@ -677,7 +688,7 @@ function TimetableView({
 
   useEffect(() => {
     if (!academicProfile) {
-      setCollegePdf({ status: "unavailable", images: [], message: "No matching college timetable was found. Your editable weekday timetable is still available below." });
+      setCollegePdf({ status: "unavailable", images: [], message: "No matching college timetable was found. Your editable weekday timetable is still available below.", sourceUrl: null });
       return;
     }
 
@@ -687,27 +698,30 @@ function TimetableView({
       mode: "pdf",
       department: academicProfile.departmentCode,
       academicYear: academicProfile.academicYearCode,
-      studyYear: String(academicProfile.studyYear),
-      semester: String(academicProfile.semester),
+      studyYear: String(collegeStudyYear),
+      semester: String(collegeSemester),
       section: academicProfile.sectionCode,
-      attempt: String(collegeRefresh),
+      attempt: String(collegeRefresh?.id ?? 0),
     });
 
     const cacheKey = `svce:v1:${profileKey}`;
+    const forceRefresh = collegeRefresh?.profileKey === profileKey && collegeRefresh.id > lastHandledRefresh.current;
+    if (forceRefresh && collegeRefresh) lastHandledRefresh.current = collegeRefresh.id;
     setCollegePdf({
       status: "loading",
       images: [],
-      message: collegeRefresh > 0 ? "Refreshing the official college timetable…" : "Loading your saved college timetable…",
+      message: forceRefresh ? "Refreshing the official college timetable…" : "Loading your saved college timetable…",
+      sourceUrl: null,
     });
 
     async function loadCollegePdf() {
-      if (collegeRefresh === 0) {
+      if (!forceRefresh) {
         const cachedPdf = await readCachedCollegeTimetable(cacheKey);
         if (cachedPdf) return cachedPdf;
       }
 
       if (!controller.signal.aborted) {
-        setCollegePdf({ status: "loading", images: [], message: "Fetching your matching college timetable…" });
+        setCollegePdf({ status: "loading", images: [], message: "Fetching your matching college timetable…", sourceUrl: null });
       }
       const response = await fetch(`/api/svce-timetable?${params.toString()}`, { signal: controller.signal, cache: "no-store" });
       if (!response.ok || !response.headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
@@ -715,19 +729,23 @@ function TimetableView({
       }
 
       const pdfBytes = await response.arrayBuffer();
-      await writeCachedCollegeTimetable(cacheKey, pdfBytes);
-      return pdfBytes;
+      const sourceUrl = response.headers.get("X-College-Timetable-Url");
+      await writeCachedCollegeTimetable(cacheKey, pdfBytes, sourceUrl);
+      return { bytes: pdfBytes, sourceUrl };
     }
 
     loadCollegePdf()
-      .then((pdfBytes) => controller.signal.aborted ? [] : renderTimetablePdfPages(pdfBytes))
-      .then((images) => {
+      .then(async (cachedPdf) => ({
+        images: controller.signal.aborted ? [] : await renderTimetablePdfPages(cachedPdf.bytes),
+        sourceUrl: cachedPdf.sourceUrl,
+      }))
+      .then(({ images, sourceUrl }) => {
         if (controller.signal.aborted) {
           images.forEach((url) => URL.revokeObjectURL(url));
           return;
         }
         imageUrls = images;
-        setCollegePdf({ status: "ready", images, message: `The original timetable is shown as ${images.length} full PDF page${images.length === 1 ? "" : "s"}, without cropping. Your editable weekday schedule is below.` });
+        setCollegePdf({ status: "ready", images, message: `The original timetable is shown as ${images.length} full PDF page${images.length === 1 ? "" : "s"}, without cropping. Your editable weekday schedule is below.`, sourceUrl });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setCollegePdf({
@@ -736,6 +754,7 @@ function TimetableView({
           message: error instanceof Error && error.message.includes("toHex is not a function")
             ? "The college timetable could not be previewed. Please refresh to try again. Your editable weekday timetable is still available below."
             : error instanceof Error ? error.message : "The college timetable could not be previewed. Your editable weekday timetable is still available below.",
+          sourceUrl: null,
         });
       });
 
@@ -809,10 +828,14 @@ function TimetableView({
   return <div className="timetable-view-stack">
     {academicProfile && <section className="card college-timetable-card">
       <div className="college-timetable-heading">
-        <div><span className="college-timetable-eyebrow">OFFICIAL SVCE TIMETABLE</span><h2>College timetable · original PDF</h2><p>{academicProfile.department} · {getStudyYearLabel(academicProfile.studyYear)} · Semester {academicProfile.semester} · {academicProfile.section} · {academicProfile.academicYear}</p></div>
+        <div><span className="college-timetable-eyebrow">OFFICIAL SVCE TIMETABLE</span><h2>College timetable · original PDF</h2><p>{academicProfile.department} · {getStudyYearLabel(collegeStudyYear)} · Semester {collegeSemester} · {academicProfile.section} · {academicProfile.academicYear}</p></div>
         <div className="college-timetable-actions">
-          {academicProfile.collegeTimetableUrl && <a className="button button-quiet" href={academicProfile.collegeTimetableUrl} target="_blank" rel="noreferrer">Source PDF <Icon name="external"/></a>}
-          <button className="button button-quiet" onClick={() => setCollegeRefresh((refresh) => refresh + 1)} disabled={collegePdf.status === "loading"} aria-label="Refresh official college timetable"><Icon name="refresh"/>{collegePdf.status === "loading" && collegeRefresh > 0 ? "Refreshing…" : "Refresh"}</button>
+          {(collegePdf.sourceUrl || savedSourceUrl) && <a className="button button-quiet" href={collegePdf.sourceUrl || savedSourceUrl || undefined} target="_blank" rel="noreferrer">Source PDF <Icon name="external"/></a>}
+          <button className="button button-quiet" onClick={() => {
+            const id = refreshSequence.current + 1;
+            refreshSequence.current = id;
+            setCollegeRefresh({ id, profileKey });
+          }} disabled={collegePdf.status === "loading"} aria-label="Refresh official college timetable"><Icon name="refresh"/>{collegePdf.status === "loading" && collegePdf.message.includes("Refreshing") ? "Refreshing…" : "Refresh"}</button>
         </div>
       </div>
       {collegePdf.status === "ready" ? <>

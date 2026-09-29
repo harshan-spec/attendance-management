@@ -136,6 +136,7 @@ export async function GET(request: Request) {
           "Content-Disposition": `inline; filename="${pdfUrl.pathname.split("/").at(-1)}"`,
           "Content-Length": String(pdfBytes.byteLength),
           "Content-Type": "application/pdf",
+          "X-College-Timetable-Url": pdfUrl.toString(),
           "X-Content-Type-Options": "nosniff",
         },
       });
