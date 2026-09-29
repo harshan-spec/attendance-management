@@ -30,6 +30,7 @@ interface AuthContextValue {
   signUp: (name: string, email: string, password: string, academicProfile: StudentAcademicProfile) => Promise<boolean>;
   sendPasswordReset: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -59,7 +60,7 @@ function getSavedPreviewUser(): AttendlyUser | null {
     }
     return user;
   } catch {
-    localStorage.removeItem(previewStorageKey);
+    try { localStorage.removeItem(previewStorageKey); } catch { /* Storage can be disabled by the browser. */ }
     return null;
   }
 }
@@ -112,12 +113,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const supabase = getSupabaseBrowserClient();
     let alive = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (alive) {
-        setUser(data.session ? mapSupabaseUser(data.session.user) : getSavedPreviewUser());
-        setReady(true);
-      }
-    });
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        if (alive) {
+          setUser(data.session ? mapSupabaseUser(data.session.user) : getSavedPreviewUser());
+          setReady(true);
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setUser(getSavedPreviewUser());
+          setReady(true);
+        }
+      });
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (alive) {
         setUser((current) => session
@@ -142,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isPreview: true,
       academicProfile: previewAcademicProfile,
     };
-    localStorage.setItem(previewStorageKey, JSON.stringify(previewUser));
+    try { localStorage.setItem(previewStorageKey, JSON.stringify(previewUser)); } catch { /* The in-memory preview can still be used. */ }
     setUser(previewUser);
   }, []);
 
@@ -183,9 +191,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetch("/api/auth/recovery", { method: "DELETE" });
   }, []);
 
+  const deleteAccount = useCallback(async (password: string) => {
+    if (!user || user.isPreview || !isSupabaseConfigured) {
+      throw new Error("Sign in to a real Attendly account before deleting it.");
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { error: passwordError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password,
+    });
+    if (passwordError) throw new Error("The password could not be verified. Check it and try again.");
+
+    const { error } = await supabase.functions.invoke("delete-attendly-account", { body: {} });
+    if (error) throw new Error("Your account could not be deleted. Please try again.");
+
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } finally {
+      setUser(null);
+    }
+  }, [user]);
+
   const signOut = useCallback(async () => {
     if (user?.isPreview) {
-      localStorage.removeItem(previewStorageKey);
+      try { localStorage.removeItem(previewStorageKey); } catch { /* The in-memory preview can still be signed out. */ }
       setUser(null);
       return;
     }
@@ -193,7 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await getSupabaseBrowserClient().auth.signOut();
       if (error) throw error;
     }
-    localStorage.removeItem(previewStorageKey);
+    try { localStorage.removeItem(previewStorageKey); } catch { /* The Supabase session has already been signed out. */ }
     setUser(null);
   }, [user]);
 
@@ -207,9 +237,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       sendPasswordReset,
       updatePassword,
+      deleteAccount,
       signOut,
     }),
-    [user, ready, enterPreview, signIn, signUp, sendPasswordReset, updatePassword, signOut],
+    [user, ready, enterPreview, signIn, signUp, sendPasswordReset, updatePassword, deleteAccount, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -7,6 +7,55 @@ const requestHeaders = {
   "User-Agent": "Mozilla/5.0 (compatible; Attendly timetable lookup/1.0)",
 };
 const MAX_TIMETABLE_BYTES = 15 * 1024 * 1024;
+const MAX_COLLEGE_PAGE_BYTES = 2 * 1024 * 1024;
+const MAX_REDIRECTS = 4;
+
+async function fetchCollegeResource(input: string | URL, init: RequestInit) {
+  let url = new URL(input);
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
+    if (url.protocol !== "https:" || url.origin !== COLLEGE_ORIGIN) {
+      throw new Error("The timetable source redirected outside the official college website.");
+    }
+    const response = await fetch(url, { ...init, redirect: "manual" });
+    const location = response.headers.get("location");
+    if (response.status < 300 || response.status >= 400 || !location) return response;
+    await response.body?.cancel();
+    url = new URL(location, url);
+  }
+  throw new Error("The college timetable source redirected too many times.");
+}
+
+async function readLimitedBody(response: Response, maximumBytes: number) {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null && (!/^\d+$/.test(contentLength) || Number(contentLength) > maximumBytes)) {
+    throw new Error("The college timetable response is too large.");
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("The college timetable response was empty.");
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBytes) {
+        await reader.cancel();
+        throw new Error("The college timetable response is too large.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
+}
 
 function decodeHtml(value: string) {
   return value
@@ -43,13 +92,14 @@ function parseOptions(html: string): SvceTimetableOptions {
 }
 
 async function fetchTimetablePage(url: string) {
-  const response = await fetch(url, {
+  const response = await fetchCollegeResource(url, {
     cache: "no-store",
     headers: requestHeaders,
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error("The SVCE timetable page is unavailable.");
-  return response.text();
+  const bytes = await readLimitedBody(response, MAX_COLLEGE_PAGE_BYTES);
+  return new TextDecoder().decode(bytes);
 }
 
 function getYearValue(options: CollegeSelectOption[], year: number) {
@@ -119,21 +169,22 @@ export async function GET(request: Request) {
     }
 
     if (query.get("mode") === "pdf") {
-      const pdfResponse = await fetch(pdfUrl, { cache: "no-store", headers: requestHeaders, signal: AbortSignal.timeout(20_000) });
-      const contentLength = Number(pdfResponse.headers.get("content-length") ?? 0);
-      if (!pdfResponse.ok || !pdfResponse.headers.get("content-type")?.toLowerCase().includes("pdf") || contentLength > MAX_TIMETABLE_BYTES) {
+      const pdfResponse = await fetchCollegeResource(pdfUrl, { cache: "no-store", headers: requestHeaders, signal: AbortSignal.timeout(20_000) });
+      if (!pdfResponse.ok || !pdfResponse.headers.get("content-type")?.toLowerCase().includes("pdf")) {
         return notFound("The college timetable file could not be downloaded.");
       }
 
-      const pdfBytes = await pdfResponse.arrayBuffer();
+      const pdfBytes = await readLimitedBody(pdfResponse, MAX_TIMETABLE_BYTES);
       if (pdfBytes.byteLength < 5 || pdfBytes.byteLength > MAX_TIMETABLE_BYTES) {
         return notFound("The college timetable file is empty or too large to preview.");
       }
+      const signature = new TextDecoder().decode(pdfBytes.slice(0, 1024));
+      if (!signature.includes("%PDF-")) return notFound("The college timetable file was not a valid PDF.");
 
       return new Response(pdfBytes, {
         headers: {
           "Cache-Control": "no-store, max-age=0",
-          "Content-Disposition": `inline; filename="${pdfUrl.pathname.split("/").at(-1)}"`,
+          "Content-Disposition": `inline; filename="${pdfUrl.pathname.split("/").at(-1)?.replaceAll(/[^\w.-]/g, "_") || "timetable.pdf"}"`,
           "Content-Length": String(pdfBytes.byteLength),
           "Content-Type": "application/pdf",
           "X-College-Timetable-Url": pdfUrl.toString(),
@@ -142,7 +193,7 @@ export async function GET(request: Request) {
       });
     }
 
-    const pdfResponse = await fetch(pdfUrl, { method: "HEAD", cache: "no-store", headers: requestHeaders, signal: AbortSignal.timeout(12_000) });
+    const pdfResponse = await fetchCollegeResource(pdfUrl, { method: "HEAD", cache: "no-store", headers: requestHeaders, signal: AbortSignal.timeout(12_000) });
     if (!pdfResponse.ok || !pdfResponse.headers.get("content-type")?.toLowerCase().includes("pdf")) {
       return notFound("The college timetable file could not be downloaded.");
     }

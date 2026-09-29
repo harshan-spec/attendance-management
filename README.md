@@ -15,7 +15,9 @@ The Attendly Supabase project is connected for local development through `.env.l
 
 Run the SQL migrations in `supabase/migrations/` in timestamp order when setting up a fresh Supabase project. The connected Attendly project already has these migrations applied. They create student profiles, semesters, subjects, dated attendance records, weekday timetable entries, account settings, ownership policies, and the transactional workspace save function.
 
-In Supabase **Authentication → URL Configuration**, allow these local callback URLs: `http://localhost:3000/auth/callback` and `http://localhost:3000/auth/recovery-callback`. For Vercel, set the Site URL to the deployed app and allow the matching two callback URLs on that domain. Add the same two `NEXT_PUBLIC_SUPABASE_*` variables to Vercel’s environment settings before deploying.
+Deploy `supabase/functions/delete-attendly-account/index.ts` as the `delete-attendly-account` Supabase Edge Function with JWT verification enabled. It re-verifies the signed-in user before permanently deleting the Auth account; the database foreign keys remove that account’s Attendly records. The function uses Supabase’s server-provided secret key and never sends it to the browser. The connected Attendly project already has this function deployed.
+
+In Supabase **Authentication → URL Configuration**, allow these local callback URLs: `http://localhost:3000/auth/callback` and `http://localhost:3000/auth/recovery-callback`. For Vercel, set the Site URL to the deployed app and allow the matching two callback URLs on that domain. Add the two `NEXT_PUBLIC_SUPABASE_*` variables to Vercel’s environment settings. Set `NEXT_PUBLIC_SITE_URL` to the production origin if you use a custom domain; otherwise Attendly uses its current Vercel domain.
 
 Local preview data remains in this browser only. Signed-in accounts load and save their records through authenticated Next.js route handlers and Supabase Row Level Security. The browser only receives the publishable key; no service-role key is used.
 

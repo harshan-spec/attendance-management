@@ -37,6 +37,18 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   const [collegeTimetableUrl, setCollegeTimetableUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    if (mode !== "login") return;
+    try {
+      if (window.sessionStorage.getItem("attendly-account-deleted") === "1") {
+        window.sessionStorage.removeItem("attendly-account-deleted");
+        setSuccess("Your account and saved attendance data have been deleted.");
+      }
+    } catch {
+      // Login still works when browser session storage is disabled.
+    }
+  }, [mode]);
+
+  useEffect(() => {
     if (mode !== "update" || !supabaseConfigured) return;
     let alive = true;
     setRecoveryChecking(true);

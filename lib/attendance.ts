@@ -81,9 +81,10 @@ export function classesNeeded(
   totals: AttendanceTotals,
   targetPercent: number,
 ): number | null {
+  if (targetPercent > 100) return null;
   const target = targetPercent / 100;
   if (target <= 0 || (totals.percentage !== null && totals.percentage >= targetPercent)) return 0;
-  if (target >= 1) return null;
+  if (target >= 1) return totals.conducted === 0 ? 1 : null;
   const needed = Math.max(0, Math.ceil((target * totals.conducted - totals.attended) / (1 - target) - 1e-10));
   let answer = needed;
   while ((totals.attended + answer) / Math.max(1, totals.conducted + answer) + 1e-10 < target) {
@@ -100,6 +101,7 @@ export function classesToAttendWithinUpcoming(
   targetPercent: number,
   upcomingClasses: number,
 ): number | null {
+  if (targetPercent > 100) return null;
   if (upcomingClasses <= 0 && totals.conducted === 0) return null;
   const target = targetPercent / 100;
   const required = target * (totals.conducted + upcomingClasses) - totals.attended;

@@ -12,9 +12,24 @@ export function AttendanceCalculator() {
   const attended = attendedText === "" ? null : Number(attendedText);
   const conducted = conductedText === "" ? null : Number(conductedText);
   const target = targetText === "" ? null : Number(targetText);
-  const invalid = attended !== null && conducted !== null && (attended < 0 || conducted < 0 || attended > conducted);
-  const percentage = attended !== null && conducted !== null && conducted > 0 && !invalid ? (attended / conducted) * 100 : null;
-  const error = invalid ? "Attended periods cannot be greater than conducted periods." : attended !== null && attended < 0 || conducted !== null && conducted < 0 ? "Enter non-negative period counts." : null;
+  const invalidCount = (attended !== null && (!Number.isSafeInteger(attended) || attended < 0)) ||
+    (conducted !== null && (!Number.isSafeInteger(conducted) || conducted < 0));
+  const countError = invalidCount
+    ? "Enter whole, non-negative period counts."
+    : attended !== null && conducted !== null && attended > conducted
+      ? "Attended periods cannot be greater than conducted periods."
+      : null;
+  const targetError = target !== null && (!Number.isFinite(target) || target < 0 || target > 100)
+    ? "Choose a target between 0% and 100%."
+    : null;
+  const percentage = attended !== null && conducted !== null && conducted > 0 && !countError
+    ? (attended / conducted) * 100
+    : null;
+  const resultCopy = countError ?? (attended === null || conducted === null
+    ? "Enter both period counts to calculate attendance."
+    : conducted === 0
+      ? "No attendance recorded yet."
+      : `Based on ${attended} of ${conducted} periods.`);
 
   return <div className="calculator-page">
     <header className="calculator-header">
@@ -27,15 +42,16 @@ export function AttendanceCalculator() {
       <p className="calculator-intro">Find your attendance from the periods you’ve attended and the periods your subject has conducted. The result updates as you enter your numbers.</p>
       <section className="card calculator-card" aria-label="Attendance calculator">
         <div className="calculator-inputs">
-          <label className="field-label">Periods attended<input type="number" inputMode="numeric" min="0" value={attendedText} onChange={(event) => setAttendedText(event.target.value)} aria-describedby="attendance-error"/></label>
-          <label className="field-label">Periods conducted<input type="number" inputMode="numeric" min="0" value={conductedText} onChange={(event) => setConductedText(event.target.value)} aria-describedby="attendance-error"/></label>
-          <label className="field-label">Required attendance (%)<input type="number" inputMode="decimal" min="0" max="100" value={targetText} onChange={(event) => setTargetText(event.target.value)}/></label>
+          <label className="field-label">Periods attended<input type="number" inputMode="numeric" min="0" step="1" value={attendedText} onChange={(event) => setAttendedText(event.target.value)} aria-describedby="period-error"/></label>
+          <label className="field-label">Periods conducted<input type="number" inputMode="numeric" min="0" step="1" value={conductedText} onChange={(event) => setConductedText(event.target.value)} aria-describedby="period-error"/></label>
+          <label className="field-label">Required attendance (%)<input type="number" inputMode="decimal" min="0" max="100" step="0.01" value={targetText} onChange={(event) => setTargetText(event.target.value)} aria-describedby="target-error"/></label>
         </div>
         <div className="calculator-result">
-          <div><span className="calculator-result-label">YOUR ATTENDANCE</span><strong>{formatPercentage(percentage)}</strong><p>{conducted === 0 ? "No attendance recorded yet." : error ?? `Based on ${attended ?? 0} of ${conducted ?? 0} periods.`}</p></div>
-          {percentage !== null && target !== null && target >= 0 && target <= 100 && !error && <span className="status-pill">{percentage >= target ? `Above ${target}% target` : `${(target - percentage).toFixed(2)}% below target`}</span>}
+          <div><span className="calculator-result-label">YOUR ATTENDANCE</span><strong>{formatPercentage(percentage)}</strong><p>{resultCopy}</p></div>
+          {percentage !== null && target !== null && !targetError && <span className="status-pill">{percentage >= target ? `Meets ${target}% target` : `${(target - percentage).toFixed(2)}% below target`}</span>}
         </div>
-        {error && <p className="calculator-error" id="attendance-error" role="alert">{error}</p>}
+        {countError && <p className="calculator-error" id="period-error" role="alert">{countError}</p>}
+        {targetError && <p className="calculator-error" id="target-error" role="alert">{targetError}</p>}
       </section>
       <section className="card calculator-explainer">
         <h2>Subject-wise attendance formula</h2>

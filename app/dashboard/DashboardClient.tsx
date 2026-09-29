@@ -20,6 +20,7 @@ type DialogState =
   | { kind: "semester" }
   | { kind: "delete-record"; record: AttendanceRecord }
   | { kind: "archive-subject"; subject: Subject }
+  | { kind: "delete-account" }
   | null;
 
 const viewMeta: Record<ViewKey, { title: string; subtitle: string; icon: IconName }> = {
@@ -66,14 +67,16 @@ function loadPreviewWorkspace(userId: string): WorkspaceData {
       return { ...parsed, timetable: Array.isArray(parsed.timetable) ? parsed.timetable : [] };
     }
   } catch {
-    localStorage.removeItem(`attendly-workspace:${userId}`);
+    try { localStorage.removeItem(`attendly-workspace:${userId}`); } catch { /* The sample workspace is still usable without browser storage. */ }
   }
   return createSampleWorkspace();
 }
 
 export function DashboardClient() {
   const router = useRouter();
-  const { user, ready, signOut, enterPreview } = useAttendlyAuth();
+  const { user, ready, signOut, enterPreview, deleteAccount: removeAccount } = useAttendlyAuth();
+  const userId = user?.id ?? "";
+  const userIsPreview = user?.isPreview ?? false;
   const [data, setData] = useState<WorkspaceData | null>(null);
   const [loadedUserId, setLoadedUserId] = useState("");
   const [workspaceError, setWorkspaceError] = useState("");
@@ -84,6 +87,13 @@ export function DashboardClient() {
   const [toast, setToast] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveRevisionRef = useRef(0);
+  const lastSavedWorkspaceRef = useRef({ userId: "", serialized: "" });
+
+  useEffect(() => {
+    saveRevisionRef.current += 1;
+  }, [userId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -98,7 +108,8 @@ export function DashboardClient() {
     setData(null);
     setLoadedUserId("");
     setWorkspaceError("");
-    if (user.isPreview) {
+    lastSavedWorkspaceRef.current = { userId: "", serialized: "" };
+    if (userIsPreview) {
       setData(loadPreviewWorkspace(user.id));
       setLoadedUserId(user.id);
       setSaveStatus("local");
@@ -111,44 +122,62 @@ export function DashboardClient() {
         const payload = await response.json() as { workspace?: WorkspaceData | null; error?: string };
         if (!response.ok) throw new Error(payload.error || "Your workspace could not be loaded.");
         if (!alive) return;
-        setData(payload.workspace?.semesters.length ? payload.workspace : blankWorkspace(user.academicProfile));
-        setLoadedUserId(user.id);
+        const workspace = payload.workspace?.semesters.length ? payload.workspace : blankWorkspace(user.academicProfile);
+        lastSavedWorkspaceRef.current = {
+          userId,
+          serialized: payload.workspace?.semesters.length ? JSON.stringify(workspace) : "",
+        };
+        setData(workspace);
+        setLoadedUserId(userId);
       })
       .catch((caught: unknown) => {
         if (alive) setWorkspaceError(caught instanceof Error ? caught.message : "Your workspace could not be loaded.");
       });
     return () => { alive = false; };
-  }, [ready, user, router, loadAttempt, enterPreview]);
+  }, [ready, userId, userIsPreview, router, loadAttempt, enterPreview]);
 
   useEffect(() => {
-    if (!user || !data || loadedUserId !== user.id) return;
-    if (user.isPreview) {
-      localStorage.setItem(`attendly-workspace:${user.id}`, JSON.stringify(data));
-      setSaveStatus("local");
+    if (!userId || !data || loadedUserId !== userId) return;
+    if (userIsPreview) {
+      try {
+        localStorage.setItem(`attendly-workspace:${userId}`, JSON.stringify(data));
+        setSaveStatus("local");
+      } catch {
+        setSaveStatus("error");
+      }
       return;
     }
 
-    const controller = new AbortController();
+    const serialized = JSON.stringify(data);
+    if (lastSavedWorkspaceRef.current.userId === userId && lastSavedWorkspaceRef.current.serialized === serialized) {
+      setSaveStatus("saved");
+      return;
+    }
+
+    const revision = ++saveRevisionRef.current;
     const timer = window.setTimeout(async () => {
-      setSaveStatus("saving");
-      try {
+      const persist = async () => {
+        if (revision !== saveRevisionRef.current) return;
+        setSaveStatus("saving");
         const response = await fetch("/api/workspace", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workspace: data }),
-          signal: controller.signal,
         });
         if (!response.ok) throw new Error("Could not sync your changes.");
-        setSaveStatus("saved");
-      } catch {
-        if (!controller.signal.aborted) setSaveStatus("error");
-      }
+        lastSavedWorkspaceRef.current = { userId, serialized };
+        if (revision === saveRevisionRef.current) setSaveStatus("saved");
+      };
+      saveQueueRef.current = saveQueueRef.current
+        .then(persist, persist)
+        .catch(() => {
+          if (revision === saveRevisionRef.current) setSaveStatus("error");
+        });
     }, 450);
     return () => {
       window.clearTimeout(timer);
-      controller.abort();
     };
-  }, [user, data, loadedUserId]);
+  }, [userId, userIsPreview, data, loadedUserId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -331,6 +360,12 @@ export function DashboardClient() {
       notify(caught instanceof Error ? caught.message : "Could not sign out. Please try again.");
     }
   }
+  async function handleAccountDeletion(password: string) {
+    await removeAccount(password);
+    try { window.sessionStorage.setItem("attendly-account-deleted", "1"); } catch { /* Account deletion still completes without browser storage. */ }
+    setDialog(null);
+    router.replace("/login");
+  }
 
   if (!ready || !user) {
     return <main className="auth-loading"><div className="loading-mark"><Icon name="check" /></div><p>Opening your attendance space…</p></main>;
@@ -366,7 +401,7 @@ export function DashboardClient() {
             {data.semesters.filter((semester) => !semester.archived).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
           </select>
         </div>
-        {user.isPreview && <div className="preview-status"><span className="status-dot" /><span>Preview data stays in this browser. It isn’t synced to Supabase.</span></div>}
+        {user.isPreview && <div className={`preview-status ${saveStatus === "error" ? "error" : ""}`}><span className="status-dot" /><span>{saveStatus === "error" ? "Browser storage is unavailable. Preview changes may not persist after reload." : "Preview data stays in this browser. It isn’t synced to Supabase."}</span></div>}
         {!user.isPreview && <div className={`preview-status workspace-sync ${saveStatus}`} aria-live="polite"><span className="status-dot" /><span>{saveStatus === "saving" ? "Saving changes to your account…" : saveStatus === "error" ? "Couldn’t sync your latest changes." : "Your attendance data syncs to your account."}</span>{saveStatus === "error" && <button type="button" onClick={retryWorkspaceSave}>Retry</button>}</div>}
         <div className="sidebar-profile">
           <span className="avatar">{initials(user.name)}</span>
@@ -424,7 +459,7 @@ export function DashboardClient() {
           {view === "planner" && <PlannerView subjects={currentSubjects} records={activeRecords} overallTarget={data.settings.overallTarget} />}
           {view === "reports" && <ReportsView subjects={currentSubjects} records={activeRecords} totals={totals} target={data.settings.overallTarget} onExport={exportCsv} />}
           {view === "semesters" && <SemestersView semesters={data.semesters} activeSemesterId={data.activeSemesterId} onActivate={setActiveSemester} onCreate={() => setDialog({ kind: "semester" })} />}
-          {view === "settings" && <SettingsView settings={data.settings} onSave={saveSettings} />}
+          {view === "settings" && <SettingsView settings={data.settings} preview={user.isPreview} onSave={saveSettings} onDeleteAccount={() => setDialog({ kind: "delete-account" })} />}
         </main>
       </div>
 
@@ -434,6 +469,7 @@ export function DashboardClient() {
       {dialog?.kind === "semester" && <SemesterModal defaultAcademicProfile={activeSemester?.academicProfile ?? user?.academicProfile} onClose={() => setDialog(null)} onSave={saveSemester} />}
       {dialog?.kind === "delete-record" && <ConfirmModal title="Remove this class record?" copy={`${formatDate(dialog.record.date, { weekday: "long", day: "numeric", month: "long" })} — this record will be removed from the semester totals.`} action="Remove record" onClose={() => setDialog(null)} onConfirm={() => deleteRecord(dialog.record)} />}
       {dialog?.kind === "archive-subject" && <ConfirmModal title={dialog.subject.archived ? "Restore this subject?" : "Archive this subject?"} copy={dialog.subject.archived ? "The subject will appear in your active subject list again." : "The subject’s history will stay saved, but it will leave your active dashboard totals."} action={dialog.subject.archived ? "Restore subject" : "Archive subject"} onClose={() => setDialog(null)} onConfirm={() => toggleArchive(dialog.subject)} />}
+      {dialog?.kind === "delete-account" && !user.isPreview && <DeleteAccountModal onClose={() => setDialog(null)} onConfirm={handleAccountDeletion} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );
@@ -1114,7 +1150,9 @@ function SemestersView({ semesters, activeSemesterId, onActivate, onCreate }: { 
   </>;
 }
 
-function SettingsView({ settings, onSave }: { settings: WorkspaceSettings; onSave: (settings: WorkspaceSettings) => void }) {
+function SettingsView({ settings, preview, onSave, onDeleteAccount }: {
+  settings: WorkspaceSettings; preview: boolean; onSave: (settings: WorkspaceSettings) => void; onDeleteAccount: () => void;
+}) {
   const [draft, setDraft] = useState(settings);
   useEffect(() => setDraft(settings), [settings]);
   return <div className="settings-layout">
@@ -1127,6 +1165,46 @@ function SettingsView({ settings, onSave }: { settings: WorkspaceSettings; onSav
       <label className="settings-field"><span><strong>Color theme</strong><span>Applies to your dashboard in this browser.</span></span><select className="setting-select" value={draft.theme} onChange={(event) => setDraft({ ...draft, theme: event.target.value as WorkspaceSettings["theme"] })}><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <div className="settings-note">{process.env.NEXT_PUBLIC_SUPABASE_URL ? "Your attendance, subjects, semesters, timetable, and targets sync to your Supabase account. Row-level security keeps each student’s data private." : "This front-end preview saves attendance in this browser only. Connect Supabase Auth and PostgreSQL before using it for real records."}</div>
       <button className="button button-primary settings-save" onClick={() => onSave(draft)}><Icon name="check"/>Save settings</button>
+    </section>
+    <section className="card settings-card delete-account-card"><h2>Delete account</h2><p>Remove your Attendly account and permanently erase its saved data.</p>
+      <div className="settings-note">This deletes your attendance, subjects, semesters, timetable, and account profile. You’ll confirm your password before deletion.</div>
+      <button className="button button-danger settings-save" disabled={preview} onClick={onDeleteAccount}><Icon name="archive"/>{preview ? "Unavailable in preview" : "Delete account and data"}</button>
+    </section>
+  </div>;
+}
+
+function DeleteAccountModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (password: string) => Promise<void> }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (confirmation !== "DELETE") {
+      setError('Type DELETE exactly to confirm permanent account deletion.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await onConfirm(password);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Your account could not be deleted. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <section className="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+      <div className="modal-header"><div><h2 id="delete-account-title">Delete your account?</h2><p>This permanently erases your account and all saved attendance data.</p></div><button className="icon-button modal-close" type="button" onClick={onClose} disabled={busy} aria-label="Close dialog"><Icon name="close"/></button></div>
+      <form className="modal-form" onSubmit={submit}>
+        <label className="field-label">Current password<input type="password" autoComplete="current-password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)}/></label>
+        <label className="field-label">Type DELETE to confirm<input autoComplete="off" required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="DELETE"/></label>
+        {error && <p className="form-message form-error" role="alert">{error}</p>}
+        <div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose} disabled={busy}>Keep my account</button><button className="button button-danger" type="submit" disabled={busy || confirmation !== "DELETE"}>{busy ? "Deleting…" : "Delete permanently"}</button></div>
+      </form>
     </section>
   </div>;
 }

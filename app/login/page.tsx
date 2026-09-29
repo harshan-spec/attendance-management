@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AuthPanel } from "@/app/auth/AuthPanel";
 
-export const metadata: Metadata = { title: "Sign in" };
+export const metadata: Metadata = { title: "Sign in", robots: { index: false, follow: false } };
 
 export default function LoginPage() {
   return <AuthPanel mode="login" />;
