@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import type { WorkspaceData } from "@/lib/types";
+import type { StudentAcademicProfile } from "@/lib/svce-timetable";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,27 @@ function isDate(value: unknown): value is string {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+function isAcademicProfile(value: unknown): value is StudentAcademicProfile {
+  if (!isObject(value) || typeof value.department !== "string" || !value.department.trim() || value.department.length > 120 ||
+      typeof value.departmentCode !== "string" || !value.departmentCode.trim() || value.departmentCode.length > 40 ||
+      typeof value.section !== "string" || !value.section.trim() || value.section.length > 40 ||
+      typeof value.sectionCode !== "string" || !value.sectionCode.trim() || value.sectionCode.length > 40 ||
+      !Number.isInteger(value.studyYear) || (value.studyYear as number) < 1 || (value.studyYear as number) > 4 ||
+      !Number.isInteger(value.semester) || (value.semester as number) < 1 || (value.semester as number) > 8 ||
+      Math.ceil((value.semester as number) / 2) !== value.studyYear ||
+      typeof value.academicYear !== "string" || !value.academicYear.trim() || value.academicYear.length > 40 ||
+      typeof value.academicYearCode !== "string" || !value.academicYearCode.trim() || value.academicYearCode.length > 40) return false;
+
+  if (value.collegeTimetableUrl === null) return true;
+  if (typeof value.collegeTimetableUrl !== "string" || value.collegeTimetableUrl.length > 2048) return false;
+  try {
+    const url = new URL(value.collegeTimetableUrl);
+    return url.protocol === "https:" && url.hostname === "www.svce.ac.in" && url.pathname.startsWith("/timetable/files/") && url.pathname.toLowerCase().endsWith(".pdf");
+  } catch {
+    return false;
+  }
+}
+
 function isWorkspace(value: unknown): value is WorkspaceData {
   if (!isObject(value) || !Array.isArray(value.semesters) || !Array.isArray(value.subjects) ||
       !Array.isArray(value.records) || !Array.isArray(value.timetable) || !isObject(value.settings)) return false;
@@ -42,7 +64,8 @@ function isWorkspace(value: unknown): value is WorkspaceData {
   const semesters = new Map<string, JsonObject>();
   for (const semester of value.semesters) {
     if (!isObject(semester) || !isUuid(semester.id) || typeof semester.name !== "string" || semester.name.trim().length < 1 || semester.name.length > 60 ||
-        !isDate(semester.startDate) || !(semester.endDate === "" || isDate(semester.endDate)) || typeof semester.archived !== "boolean") return false;
+        !isDate(semester.startDate) || !(semester.endDate === "" || isDate(semester.endDate)) || typeof semester.archived !== "boolean" ||
+        (semester.academicProfile !== undefined && !isAcademicProfile(semester.academicProfile))) return false;
     if (semester.endDate && semester.endDate < semester.startDate) return false;
     if (semesters.has(semester.id)) return false;
     semesters.set(semester.id, semester);
@@ -125,7 +148,7 @@ export async function GET() {
   if (!user) return unauthorized();
 
   const [semesterResult, subjectResult, recordResult, timetableResult, settingsResult] = await Promise.all([
-    supabase.from("semesters").select("id,name,start_date,end_date,is_archived,is_active").order("start_date", { ascending: true }),
+    supabase.from("semesters").select("id,name,start_date,end_date,is_archived,is_active,academic_profile").order("start_date", { ascending: true }),
     supabase.from("subjects").select("id,semester_id,name,code,credits,required_attendance,color,is_archived").order("name", { ascending: true }),
     loadAttendanceRecords(supabase),
     supabase.from("timetable_entries").select("semester_id,subject_id,weekday,hour").order("weekday", { ascending: true }).order("hour", { ascending: true }),
@@ -143,6 +166,7 @@ export async function GET() {
     startDate: semester.start_date,
     endDate: semester.end_date ?? "",
     archived: semester.is_archived,
+    ...(isAcademicProfile(semester.academic_profile) ? { academicProfile: semester.academic_profile } : {}),
   }));
   const activeSemester = (semesterResult.data ?? []).find((semester) => semester.is_active) ?? semesterResult.data?.[0];
   const workspace: WorkspaceData = {

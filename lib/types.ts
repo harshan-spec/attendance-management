@@ -1,3 +1,5 @@
+import type { StudentAcademicProfile } from "./svce-timetable";
+
 export type AttendanceStatus = "present" | "absent" | "partial";
 
 export interface Semester {
@@ -6,6 +8,7 @@ export interface Semester {
   startDate: string;
   endDate: string;
   archived: boolean;
+  academicProfile?: StudentAcademicProfile;
 }
 
 export interface Subject {

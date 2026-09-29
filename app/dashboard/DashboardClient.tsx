@@ -6,7 +6,7 @@ import { useAttendlyAuth } from "@/lib/auth-context";
 import { afterAttending, afterMissing, classesNeeded, classesThatCanBeMissed, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals } from "@/lib/attendance";
 import { createSampleWorkspace } from "@/lib/sample-data";
 import type { AttendanceRecord, Semester, Subject, TimetableEntry, WorkspaceData, WorkspaceSettings } from "@/lib/types";
-import { getStudyYearLabel, type StudentAcademicProfile } from "@/lib/svce-timetable";
+import { getStudyYearLabel, SVCE_FALLBACK_OPTIONS, type CollegeSelectOption, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
 import { renderTimetablePdfPages } from "@/lib/svce-timetable-render";
 import { readCachedCollegeTimetable, writeCachedCollegeTimetable } from "@/lib/college-timetable-cache";
 import { createId } from "@/lib/id";
@@ -48,7 +48,7 @@ const navItems: { key: ViewKey; label: string; icon: IconName; mobileHide?: bool
 function blankWorkspace(academicProfile?: StudentAcademicProfile | null): WorkspaceData {
   const id = createId();
   return {
-    semesters: [{ id, name: academicProfile ? `Semester ${String(academicProfile.semester).padStart(2, "0")}` : "My first semester", startDate: dateKey(new Date()), endDate: "", archived: false }],
+    semesters: [{ id, name: academicProfile ? `Semester ${String(academicProfile.semester).padStart(2, "0")}` : "My first semester", startDate: dateKey(new Date()), endDate: "", archived: false, ...(academicProfile ? { academicProfile } : {}) }],
     activeSemesterId: id,
     subjects: [],
     records: [],
@@ -227,8 +227,8 @@ export function DashboardClient() {
   function saveSemester(semester: Semester) {
     updateData((current) => ({ ...current, semesters: [...current.semesters, semester], activeSemesterId: semester.id }));
     setDialog(null);
-    setView("subjects");
-    notify("Semester created. Add its subjects to get started.");
+    setView("timetable");
+    notify("Semester created. Loading its college timetable.");
   }
   function setActiveSemester(id: string) {
     updateData((current) => ({ ...current, activeSemesterId: id }));
@@ -368,7 +368,7 @@ export function DashboardClient() {
           {view === "subjects" && <SubjectsView subjects={semesterSubjects} records={semesterRecords} onAdd={() => setDialog({ kind: "subject" })} onEdit={(subject) => setDialog({ kind: "subject", subject })} onLog={openAttendance} onQuickLog={quickLog} onArchive={(subject) => setDialog({ kind: "archive-subject", subject })} showArchived={showArchived} onToggleArchived={() => setShowArchived((value) => !value)} />}
           {view === "attendance" && <AttendanceView subjects={semesterSubjects} records={semesterRecords} onEdit={(record) => setDialog({ kind: "attendance", record })} onDelete={(record) => setDialog({ kind: "delete-record", record })} onAdd={() => openAttendance()} />}
           {view === "calendar" && <CalendarView subjects={semesterSubjects} records={semesterRecords} onAdd={(date) => openAttendance(undefined, date)} />}
-          {view === "timetable" && activeSemester && <TimetableView semesterId={activeSemester.id} semesterName={activeSemester.name} academicProfile={user.academicProfile} subjects={semesterSubjects} timetable={data.timetable} onSave={saveTimetable} onAddSubject={() => setDialog({ kind: "subject" })} />}
+          {view === "timetable" && activeSemester && <TimetableView semesterId={activeSemester.id} semesterName={activeSemester.name} academicProfile={user.academicProfile} semesterAcademicProfile={activeSemester.academicProfile} subjects={semesterSubjects} timetable={data.timetable} onSave={saveTimetable} onAddSubject={() => setDialog({ kind: "subject" })} />}
           {view === "planner" && <PlannerView subjects={currentSubjects} records={activeRecords} overallTarget={data.settings.overallTarget} />}
           {view === "reports" && <ReportsView subjects={currentSubjects} records={activeRecords} totals={totals} target={data.settings.overallTarget} onExport={exportCsv} />}
           {view === "semesters" && <SemestersView semesters={data.semesters} activeSemesterId={data.activeSemesterId} onActivate={setActiveSemester} onCreate={() => setDialog({ kind: "semester" })} />}
@@ -378,7 +378,7 @@ export function DashboardClient() {
 
       {dialog?.kind === "attendance" && <AttendanceModal subjects={semesterSubjects} initialRecord={dialog.record} initialSubjectId={dialog.subjectId} initialDate={dialog.date} onClose={() => setDialog(null)} onSave={saveAttendance} />}
       {dialog?.kind === "subject" && activeSemester && <SubjectModal subject={dialog.subject} semesterId={activeSemester.id} defaultTarget={data.settings.defaultSubjectTarget} onClose={() => setDialog(null)} onSave={saveSubject} />}
-      {dialog?.kind === "semester" && <SemesterModal onClose={() => setDialog(null)} onSave={saveSemester} />}
+      {dialog?.kind === "semester" && <SemesterModal defaultAcademicProfile={activeSemester?.academicProfile ?? user?.academicProfile} onClose={() => setDialog(null)} onSave={saveSemester} />}
       {dialog?.kind === "delete-record" && <ConfirmModal title="Remove this class record?" copy={`${formatDate(dialog.record.date, { weekday: "long", day: "numeric", month: "long" })} — this record will be removed from the semester totals.`} action="Remove record" onClose={() => setDialog(null)} onConfirm={() => deleteRecord(dialog.record)} />}
       {dialog?.kind === "archive-subject" && <ConfirmModal title={dialog.subject.archived ? "Restore this subject?" : "Archive this subject?"} copy={dialog.subject.archived ? "The subject will appear in your active subject list again." : "The subject’s history will stay saved, but it will leave your active dashboard totals."} action={dialog.subject.archived ? "Restore subject" : "Archive subject"} onClose={() => setDialog(null)} onConfirm={() => toggleArchive(dialog.subject)} />}
       {toast && <div className="toast" role="status">{toast}</div>}
@@ -659,9 +659,9 @@ function timetableDraft(entries: TimetableEntry[], semesterId: string) {
 }
 
 function TimetableView({
-  semesterId, semesterName, academicProfile, subjects, timetable, onSave, onAddSubject,
+  semesterId, semesterName, academicProfile, semesterAcademicProfile, subjects, timetable, onSave, onAddSubject,
 }: {
-  semesterId: string; semesterName: string; academicProfile?: StudentAcademicProfile | null; subjects: Subject[]; timetable: TimetableEntry[];
+  semesterId: string; semesterName: string; academicProfile?: StudentAcademicProfile | null; semesterAcademicProfile?: StudentAcademicProfile; subjects: Subject[]; timetable: TimetableEntry[];
   onSave: (entries: TimetableEntry[]) => void; onAddSubject: () => void;
 }) {
   const activeEntries = timetable.filter((entry) => entry.semesterId === semesterId);
@@ -675,11 +675,12 @@ function TimetableView({
   const editing = editingSemesters[semesterId] ?? activeEntries.length === 0;
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
   const activeSubjects = subjects.filter((subject) => !subject.archived);
-  const breaks = semesterBreaks(semesterName);
-  const collegeSemester = academicProfile ? semesterNumberFromName(semesterName, academicProfile.semester) : 0;
-  const collegeStudyYear = collegeSemester ? Math.ceil(collegeSemester / 2) : academicProfile?.studyYear ?? 0;
-  const savedSourceUrl = academicProfile && collegeSemester === academicProfile.semester ? academicProfile.collegeTimetableUrl : null;
-  const profileKey = academicProfile ? [academicProfile.departmentCode, academicProfile.academicYearCode, collegeStudyYear, collegeSemester, academicProfile.sectionCode, savedSourceUrl].join("|") : "";
+  const timetableProfile = semesterAcademicProfile ?? academicProfile;
+  const breaks = semesterAcademicProfile ? semesterBreaks(`Semester ${semesterAcademicProfile.semester}`) : semesterBreaks(semesterName);
+  const collegeSemester = semesterAcademicProfile?.semester ?? (academicProfile ? semesterNumberFromName(semesterName, academicProfile.semester) : 0);
+  const collegeStudyYear = semesterAcademicProfile?.studyYear ?? (collegeSemester ? Math.ceil(collegeSemester / 2) : academicProfile?.studyYear ?? 0);
+  const savedSourceUrl = timetableProfile && collegeSemester === timetableProfile.semester ? timetableProfile.collegeTimetableUrl : null;
+  const profileKey = timetableProfile ? [timetableProfile.departmentCode, timetableProfile.academicYearCode, collegeStudyYear, collegeSemester, timetableProfile.sectionCode, savedSourceUrl].join("|") : "";
   const columns: TimetableColumn[] = [];
   for (let hour = 1; hour <= 7; hour += 1) {
     columns.push({ kind: "hour", hour });
@@ -687,7 +688,7 @@ function TimetableView({
   }
 
   useEffect(() => {
-    if (!academicProfile) {
+    if (!timetableProfile) {
       setCollegePdf({ status: "unavailable", images: [], message: "No matching college timetable was found. Your editable weekday timetable is still available below.", sourceUrl: null });
       return;
     }
@@ -696,11 +697,11 @@ function TimetableView({
     let imageUrls: string[] = [];
     const params = new URLSearchParams({
       mode: "pdf",
-      department: academicProfile.departmentCode,
-      academicYear: academicProfile.academicYearCode,
+      department: timetableProfile.departmentCode,
+      academicYear: timetableProfile.academicYearCode,
       studyYear: String(collegeStudyYear),
       semester: String(collegeSemester),
-      section: academicProfile.sectionCode,
+      section: timetableProfile.sectionCode,
       attempt: String(collegeRefresh?.id ?? 0),
     });
 
@@ -762,7 +763,7 @@ function TimetableView({
       controller.abort();
       imageUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [academicProfile, profileKey, collegeRefresh]);
+  }, [timetableProfile, profileKey, collegeRefresh]);
 
   function setSlot(weekday: number, hour: number, subjectId: string, span = 1) {
     setDrafts((current) => ({
@@ -826,9 +827,9 @@ function TimetableView({
   }
 
   return <div className="timetable-view-stack">
-    {academicProfile && <section className="card college-timetable-card">
+    {timetableProfile && <section className="card college-timetable-card">
       <div className="college-timetable-heading">
-        <div><span className="college-timetable-eyebrow">OFFICIAL SVCE TIMETABLE</span><h2>College timetable · original PDF</h2><p>{academicProfile.department} · {getStudyYearLabel(collegeStudyYear)} · Semester {collegeSemester} · {academicProfile.section} · {academicProfile.academicYear}</p></div>
+        <div><span className="college-timetable-eyebrow">OFFICIAL SVCE TIMETABLE</span><h2>College timetable · original PDF</h2><p>{timetableProfile.department} · {getStudyYearLabel(collegeStudyYear)} · Semester {collegeSemester} · {timetableProfile.section} · {timetableProfile.academicYear}</p></div>
         <div className="college-timetable-actions">
           {(collegePdf.sourceUrl || savedSourceUrl) && <a className="button button-quiet" href={collegePdf.sourceUrl || savedSourceUrl || undefined} target="_blank" rel="noreferrer">Source PDF <Icon name="external"/></a>}
           <button className="button button-quiet" onClick={() => {
@@ -839,7 +840,7 @@ function TimetableView({
         </div>
       </div>
       {collegePdf.status === "ready" ? <>
-        <div className="college-timetable-pages" role="group" aria-label={`Complete official timetable PDF pages for ${academicProfile.department}, semester ${academicProfile.semester}`}>
+        <div className="college-timetable-pages" role="group" aria-label={`Complete official timetable PDF pages for ${timetableProfile.department}, semester ${collegeSemester}`}>
           {collegePdf.images.map((image, index) => <figure className="college-timetable-page" key={`${profileKey}-page-${index + 1}`}>
             <img src={image} alt={`Official SVCE timetable, page ${index + 1} of ${collegePdf.images.length}. Full page shown without cropping.`} loading={index === 0 ? "eager" : "lazy"}/>
             <figcaption>Page {index + 1} of {collegePdf.images.length}</figcaption>
@@ -1094,23 +1095,115 @@ function SubjectModal({
   </div>;
 }
 
-function SemesterModal({ onClose, onSave }: { onClose: () => void; onSave: (semester: Semester) => void }) {
+function withCurrentOption(options: CollegeSelectOption[], value: string, label: string): CollegeSelectOption[] {
+  return value && !options.some((option) => option.value === value) ? [{ value, label }, ...options] : options;
+}
+
+function SemesterModal({ defaultAcademicProfile, onClose, onSave }: {
+  defaultAcademicProfile?: StudentAcademicProfile | null;
+  onClose: () => void;
+  onSave: (semester: Semester) => void;
+}) {
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState(dateKey(new Date()));
   const [endDate, setEndDate] = useState("");
+  const [academicOptions, setAcademicOptions] = useState<SvceTimetableOptions>(SVCE_FALLBACK_OPTIONS);
+  const [department, setDepartment] = useState(defaultAcademicProfile?.departmentCode ?? "");
+  const [academicYear, setAcademicYear] = useState("");
+  const [studyYear, setStudyYear] = useState("");
+  const [semesterNumber, setSemesterNumber] = useState("");
+  const [section, setSection] = useState(defaultAcademicProfile?.sectionCode ?? "none");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/svce-timetable?mode=options", { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.json())
+      .then((result: { options?: SvceTimetableOptions }) => {
+        if (controller.signal.aborted || !result.options?.departments?.length || !result.options.academicYears?.length || !result.options.years?.length || !result.options.sections?.length) return;
+        setAcademicOptions(result.options);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  const departmentOptions = withCurrentOption(academicOptions.departments, department, defaultAcademicProfile?.department ?? "Previously selected department");
+  const academicYearOptions = withCurrentOption(academicOptions.academicYears, academicYear, defaultAcademicProfile?.academicYear ?? "Previously selected academic year");
+  const sectionOptions = withCurrentOption(academicOptions.sections, section, defaultAcademicProfile?.section ?? "Previously selected section");
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) { setError("Give this semester a name."); return; }
     if (endDate && endDate < startDate) { setError("The end date must be after the start date."); return; }
-    onSave({ id: createId(), name: name.trim(), startDate, endDate, archived: false });
+    const selectedDepartment = departmentOptions.find((option) => option.value === department);
+    const selectedAcademicYear = academicYearOptions.find((option) => option.value === academicYear);
+    const selectedSection = sectionOptions.find((option) => option.value === section);
+    const yearNumber = Number(studyYear);
+    const semesterValue = Number(semesterNumber);
+    if (!selectedDepartment || !selectedAcademicYear || !selectedSection || !Number.isInteger(yearNumber) || !Number.isInteger(semesterValue) || Math.ceil(semesterValue / 2) !== yearNumber) {
+      setError("Complete the department, section, year, semester, and academic year details.");
+      return;
+    }
+    onSave({
+      id: createId(),
+      name: name.trim(),
+      startDate,
+      endDate,
+      archived: false,
+      academicProfile: {
+        department: selectedDepartment.label,
+        departmentCode: selectedDepartment.value,
+        section: selectedSection.label,
+        sectionCode: selectedSection.value,
+        studyYear: yearNumber,
+        semester: semesterValue,
+        academicYear: selectedAcademicYear.label,
+        academicYearCode: selectedAcademicYear.value,
+        collegeTimetableUrl: null,
+      },
+    });
   }
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="modal" role="dialog" aria-modal="true" aria-labelledby="semester-modal-title">
-      <div className="modal-header"><div><h2 id="semester-modal-title">Create a semester</h2><p>Attendance records and subjects will be grouped in this term.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
+      <div className="modal-header"><div><h2 id="semester-modal-title">Create a semester</h2><p>Set the academic details used to fetch this semester’s college timetable.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Semester name<input autoFocus required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Semester 06"/></label>
         <div className="form-two-col"><label className="field-label">Start date<input type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)}/></label><label className="field-label">End date <span className="optional-label">Optional</span><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)}/></label></div>
+        <div className="signup-profile-grid">
+          <label className="field-label signup-department-field">Department
+            <select required value={department} onChange={(event) => setDepartment(event.target.value)}>
+              <option value="">Choose department</option>{departmentOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="field-label">Academic year
+            <select required value={academicYear} onChange={(event) => setAcademicYear(event.target.value)}>
+              <option value="">Choose academic year</option>{academicYearOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="field-label">Year of study
+            <select required value={studyYear} onChange={(event) => {
+              setStudyYear(event.target.value);
+              setSemesterNumber("");
+              setName((current) => /^semester\s+\d+$/i.test(current) ? "" : current);
+            }}>
+              <option value="">Choose year</option>{academicOptions.years.map((option, index) => <option value={String(index + 1)} key={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="field-label">Semester
+            <select required value={semesterNumber} disabled={!studyYear} onChange={(event) => {
+              const nextSemester = event.target.value;
+              setSemesterNumber(nextSemester);
+              if (nextSemester) setName((current) => !current.trim() || /^semester\s+\d+$/i.test(current) ? `Semester ${String(nextSemester).padStart(2, "0")}` : current);
+            }}>
+              <option value="">Choose semester</option>{(studyYear ? [Number(studyYear) * 2 - 1, Number(studyYear) * 2] : []).map((value) => <option value={String(value)} key={value}>{value}</option>)}
+            </select>
+          </label>
+          <label className="field-label">Section
+            <select required value={section} onChange={(event) => setSection(event.target.value)}>
+              {sectionOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+        </div>
         {error && <p className="form-message form-error" role="alert">{error}</p>}
         <div className="modal-actions"><button className="button button-quiet" type="button" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit"><Icon name="check"/>Create semester</button></div>
       </form>
