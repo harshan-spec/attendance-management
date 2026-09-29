@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAttendlyAuth } from "@/lib/auth-context";
-import { afterAttending, afterMissing, classesNeeded, classesThatCanBeMissed, classesToAttendWithinUpcoming, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals } from "@/lib/attendance";
+import { afterAttending, afterMissing, classesNeeded, classesThatCanBeMissed, classesToAttendWithinUpcoming, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals, localDate } from "@/lib/attendance";
 import { createSampleWorkspace } from "@/lib/sample-data";
 import type { AttendanceRecord, Semester, Subject, TimetableEntry, WorkspaceData, WorkspaceSettings } from "@/lib/types";
 import { getStudyYearLabel, SVCE_FALLBACK_OPTIONS, type CollegeSelectOption, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
@@ -15,6 +15,7 @@ import { Icon, type IconName } from "@/app/dashboard/Icons";
 type ViewKey = "overview" | "subjects" | "attendance" | "calendar" | "timetable" | "planner" | "reports" | "semesters" | "settings";
 type DialogState =
   | { kind: "attendance"; record?: AttendanceRecord; subjectId?: string; date?: string }
+  | { kind: "whole-day-attendance"; date?: string }
   | { kind: "subject"; subject?: Subject }
   | { kind: "semester" }
   | { kind: "delete-record"; record: AttendanceRecord }
@@ -186,6 +187,14 @@ export function DashboardClient() {
     }
     setDialog({ kind: "attendance", subjectId, date });
   }
+  function openWholeDayAttendance(date?: string) {
+    if (!currentSubjects.length) {
+      setDialog({ kind: "subject" });
+      notify("Add a subject and fill in your weekly timetable before marking a whole day.");
+      return;
+    }
+    setDialog({ kind: "whole-day-attendance", date });
+  }
   function quickLog(subjectId: string, status: "present" | "absent") {
     const subject = currentSubjects.find((entry) => entry.id === subjectId);
     if (!subject) return;
@@ -213,6 +222,49 @@ export function DashboardClient() {
     }));
     setDialog(null);
     notify(dialog?.kind === "attendance" && dialog.record ? "Attendance record updated." : "Attendance recorded for the selected day.");
+  }
+  function saveWholeDayAttendance(date: string, status: "present" | "absent") {
+    if (!data || !activeSemester) return;
+    const weekday = localDate(date).getDay();
+    const activeSubjectIds = new Set(currentSubjects.map((subject) => subject.id));
+    const scheduledHours = new Map<string, Set<number>>();
+    for (const entry of data.timetable) {
+      if (entry.semesterId !== activeSemester.id || entry.weekday !== weekday || !activeSubjectIds.has(entry.subjectId)) continue;
+      const hours = scheduledHours.get(entry.subjectId) ?? new Set<number>();
+      hours.add(entry.hour);
+      scheduledHours.set(entry.subjectId, hours);
+    }
+    if (!scheduledHours.size) {
+      notify(`No saved timetable classes for ${formatDay(date)}. Fill in the weekly timetable first.`);
+      return;
+    }
+    const scheduledPeriods = new Map([...scheduledHours].map(([subjectId, hours]) => [subjectId, hours.size]));
+
+    updateData((current) => {
+      const subjectIds = new Set(scheduledPeriods.keys());
+      const existingForDay = current.records.filter((record) => record.date === date && subjectIds.has(record.subjectId));
+      const replacements: AttendanceRecord[] = Array.from(scheduledPeriods, ([subjectId, periods]) => {
+        const matches = existingForDay.filter((record) => record.subjectId === subjectId);
+        const retainedNotes = [...new Set(matches.map((record) => record.note?.trim()).filter((note): note is string => Boolean(note)))];
+        const note = retainedNotes.length ? retainedNotes.join(" · ").slice(0, 140) : matches.length ? undefined : "Whole-day timetable mark";
+        return {
+          id: matches[0]?.id ?? createId(),
+          subjectId,
+          date,
+          periods,
+          attended: status === "present" ? periods : 0,
+          ...(note ? { note } : {}),
+        };
+      });
+      return {
+        ...current,
+        records: [...current.records.filter((record) => record.date !== date || !subjectIds.has(record.subjectId)), ...replacements],
+      };
+    });
+
+    const totalPeriods = [...scheduledPeriods.values()].reduce((sum, periods) => sum + periods, 0);
+    notify(`Marked ${totalPeriods} scheduled ${totalPeriods === 1 ? "period" : "periods"} across ${scheduledPeriods.size} ${scheduledPeriods.size === 1 ? "subject" : "subjects"} ${status} for ${formatDay(date)}, ${formatDate(date)}.`);
+    setDialog(null);
   }
   function saveSubject(subject: Subject) {
     updateData((current) => ({
@@ -366,8 +418,8 @@ export function DashboardClient() {
             onLog={openAttendance}
           />}
           {view === "subjects" && <SubjectsView subjects={semesterSubjects} records={semesterRecords} onAdd={() => setDialog({ kind: "subject" })} onEdit={(subject) => setDialog({ kind: "subject", subject })} onLog={openAttendance} onQuickLog={quickLog} onArchive={(subject) => setDialog({ kind: "archive-subject", subject })} showArchived={showArchived} onToggleArchived={() => setShowArchived((value) => !value)} />}
-          {view === "attendance" && <AttendanceView subjects={semesterSubjects} records={semesterRecords} onEdit={(record) => setDialog({ kind: "attendance", record })} onDelete={(record) => setDialog({ kind: "delete-record", record })} onAdd={() => openAttendance()} />}
-          {view === "calendar" && <CalendarView subjects={semesterSubjects} records={semesterRecords} onAdd={(date) => openAttendance(undefined, date)} />}
+          {view === "attendance" && <AttendanceView subjects={semesterSubjects} records={semesterRecords} onEdit={(record) => setDialog({ kind: "attendance", record })} onDelete={(record) => setDialog({ kind: "delete-record", record })} onAdd={() => openAttendance()} onWholeDay={() => openWholeDayAttendance()} />}
+          {view === "calendar" && <CalendarView subjects={semesterSubjects} records={semesterRecords} onAdd={(date) => openAttendance(undefined, date)} onWholeDay={openWholeDayAttendance} />}
           {view === "timetable" && activeSemester && <TimetableView semesterId={activeSemester.id} semesterName={activeSemester.name} academicProfile={user.academicProfile} semesterAcademicProfile={activeSemester.academicProfile} subjects={semesterSubjects} timetable={data.timetable} onSave={saveTimetable} onAddSubject={() => setDialog({ kind: "subject" })} />}
           {view === "planner" && <PlannerView subjects={currentSubjects} records={activeRecords} overallTarget={data.settings.overallTarget} />}
           {view === "reports" && <ReportsView subjects={currentSubjects} records={activeRecords} totals={totals} target={data.settings.overallTarget} onExport={exportCsv} />}
@@ -377,6 +429,7 @@ export function DashboardClient() {
       </div>
 
       {dialog?.kind === "attendance" && <AttendanceModal subjects={semesterSubjects} initialRecord={dialog.record} initialSubjectId={dialog.subjectId} initialDate={dialog.date} onClose={() => setDialog(null)} onSave={saveAttendance} />}
+      {dialog?.kind === "whole-day-attendance" && activeSemester && <WholeDayAttendanceModal subjects={currentSubjects} records={semesterRecords} timetable={data.timetable} semesterId={activeSemester.id} initialDate={dialog.date} onClose={() => setDialog(null)} onSave={saveWholeDayAttendance} />}
       {dialog?.kind === "subject" && activeSemester && <SubjectModal subject={dialog.subject} semesterId={activeSemester.id} defaultTarget={data.settings.defaultSubjectTarget} onClose={() => setDialog(null)} onSave={saveSubject} />}
       {dialog?.kind === "semester" && <SemesterModal defaultAcademicProfile={activeSemester?.academicProfile ?? user?.academicProfile} onClose={() => setDialog(null)} onSave={saveSemester} />}
       {dialog?.kind === "delete-record" && <ConfirmModal title="Remove this class record?" copy={`${formatDate(dialog.record.date, { weekday: "long", day: "numeric", month: "long" })} — this record will be removed from the semester totals.`} action="Remove record" onClose={() => setDialog(null)} onConfirm={() => deleteRecord(dialog.record)} />}
@@ -541,10 +594,10 @@ function SubjectsView({
 }
 
 function AttendanceView({
-  subjects, records, onEdit, onDelete, onAdd,
+  subjects, records, onEdit, onDelete, onAdd, onWholeDay,
 }: {
   subjects: Subject[]; records: AttendanceRecord[]; onEdit: (record: AttendanceRecord) => void;
-  onDelete: (record: AttendanceRecord) => void; onAdd: () => void;
+  onDelete: (record: AttendanceRecord) => void; onAdd: () => void; onWholeDay: () => void;
 }) {
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -560,7 +613,7 @@ function AttendanceView({
   const grouped = new Map<string, AttendanceRecord[]>();
   filtered.forEach((record) => grouped.set(record.date, [...(grouped.get(record.date) ?? []), record]));
   return <>
-    <div className="history-summary-row"><span><strong>{filtered.length}</strong> {filtered.length === 1 ? "class record" : "class records"}</span><span>Present, absent, or partial attendance by date</span></div>
+    <div className="history-summary-row"><span><strong>{filtered.length}</strong> {filtered.length === 1 ? "class record" : "class records"}</span><div className="history-summary-actions"><span>Present, absent, or partial attendance by date</span><button className="button button-primary" onClick={onWholeDay}><Icon name="calendar"/>Mark whole day</button></div></div>
     <div className="filter-bar">
       <select className="filter-select" aria-label="Filter by subject" value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}><option value="all">All subjects</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select>
       <select className="filter-select" aria-label="Filter by attendance status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="present">Present</option><option value="absent">Absent</option><option value="partial">Partial</option></select>
@@ -584,7 +637,7 @@ function AttendanceView({
   </>;
 }
 
-function CalendarView({ subjects, records, onAdd }: { subjects: Subject[]; records: AttendanceRecord[]; onAdd: (date?: string) => void }) {
+function CalendarView({ subjects, records, onAdd, onWholeDay }: { subjects: Subject[]; records: AttendanceRecord[]; onAdd: (date?: string) => void; onWholeDay: (date?: string) => void }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12));
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
@@ -623,6 +676,7 @@ function CalendarView({ subjects, records, onAdd }: { subjects: Subject[]; recor
         return <div className="calendar-record" key={record.id}><span className="subject-color" style={{ backgroundColor: subject?.color ?? "#a8b8b1" }}/><div><strong>{subject?.name ?? "Archived subject"}</strong><span>{record.attended} of {record.periods} periods attended</span></div><StatusPill health={status === "present" ? "safe" : status === "absent" ? "critical" : "watch"} text={status === "partial" ? "Partial" : status === "present" ? "Present" : "Absent"}/></div>;
       })}
       <button className="button button-quiet calendar-add" onClick={() => onAdd(selectedDate)}><Icon name="plus"/>Log class on this day</button>
+      <button className="button button-primary calendar-add-day" onClick={() => onWholeDay(selectedDate)}><Icon name="calendar"/>Mark whole day</button>
     </aside>
   </div>;
 }
@@ -746,7 +800,7 @@ function TimetableView({
           return;
         }
         imageUrls = images;
-        setCollegePdf({ status: "ready", images, message: `The original timetable is shown as ${images.length} full PDF page${images.length === 1 ? "" : "s"}, without cropping. Your editable weekday schedule is below.`, sourceUrl });
+        setCollegePdf({ status: "ready", images, message: `The original timetable is shown as ${images.length} full PDF page${images.length === 1 ? "" : "s"}, without cropping. Fill the Attendly weekday timetable below separately for whole-day attendance marking.`, sourceUrl });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setCollegePdf({
@@ -863,6 +917,7 @@ function TimetableView({
         </> : <button className="button button-quiet" onClick={beginEditing}><Icon name="edit"/>Edit timetable</button>}
       </div>
     </div>
+    <div className="timetable-manual-callout" role="note"><Icon name="calendar"/><div><strong>{activeEntries.length ? "Keep your Attendly timetable up to date" : "Fill this timetable manually"}</strong><p>The college PDF is only a reference and does not fill this schedule automatically. Whole-day attendance uses the subjects saved in this weekly timetable.</p></div></div>
     {!activeSubjects.length && <div className="timetable-empty-subjects"><span>Add subjects before filling out your weekly schedule.</span><button className="text-link" onClick={onAddSubject}><Icon name="plus"/>Add a subject</button></div>}
     <div className="timetable-scroll">
       <table className="timetable-table">
@@ -874,7 +929,7 @@ function TimetableView({
         </tr>)}</tbody>
       </table>
     </div>
-    <div className="timetable-footnote"><Icon name="calendar"/><span>This timetable is a reference for your week. It does not create or change attendance records.</span></div>
+    <div className="timetable-footnote"><Icon name="calendar"/><span>Whole-day marking uses these saved weekday slots. The college timetable PDF, when available, is a separate reference.</span></div>
     </section>
   </div>;
 }
@@ -1142,6 +1197,46 @@ function AttendanceModal({
         {error && <p className="form-message form-error" role="alert">{error}</p>}
         <div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit"><Icon name="check"/>{initialRecord ? "Save changes" : "Save attendance"}</button></div>
       </form>
+    </section>
+  </div>;
+}
+
+function WholeDayAttendanceModal({ subjects, records, timetable, semesterId, initialDate, onClose, onSave }: {
+  subjects: Subject[]; records: AttendanceRecord[]; timetable: TimetableEntry[]; semesterId: string; initialDate?: string;
+  onClose: () => void; onSave: (date: string, status: "present" | "absent") => void;
+}) {
+  const [date, setDate] = useState(initialDate ?? dateKey(new Date()));
+  const weekday = date ? localDate(date).getDay() : -1;
+  const activeSubjectIds = new Set(subjects.map((subject) => subject.id));
+  const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+  const periodsBySubject = new Map<string, Set<number>>();
+  for (const entry of timetable) {
+    if (entry.semesterId !== semesterId || entry.weekday !== weekday || !activeSubjectIds.has(entry.subjectId)) continue;
+    const hours = periodsBySubject.get(entry.subjectId) ?? new Set<number>();
+    hours.add(entry.hour);
+    periodsBySubject.set(entry.subjectId, hours);
+  }
+  const scheduledSubjects = [...periodsBySubject.entries()]
+    .map(([subjectId, hours]) => ({ subject: subjectById.get(subjectId), hours: [...hours].sort((a, b) => a - b) }))
+    .filter((entry): entry is { subject: Subject; hours: number[] } => Boolean(entry.subject))
+    .sort((a, b) => a.hours[0] - b.hours[0]);
+  const scheduledIds = new Set(scheduledSubjects.map(({ subject }) => subject.id));
+  const existingScheduledRecords = records.filter((record) => record.date === date && scheduledIds.has(record.subjectId));
+  const totalPeriods = scheduledSubjects.reduce((sum, entry) => sum + entry.hours.length, 0);
+
+  return <div className="modal-backdrop day-attendance-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal day-attendance-modal" role="dialog" aria-modal="true" aria-labelledby="whole-day-modal-title">
+      <div className="modal-header"><div><h2 id="whole-day-modal-title">Mark attendance for a whole day</h2><p>Apply one status to every subject scheduled in your saved Attendly timetable.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
+      <div className="modal-form">
+        <label className="field-label">Class date<input type="date" required value={date} onChange={(event) => setDate(event.target.value)}/></label>
+        <section className="day-attendance-preview" aria-label="Saved timetable for selected day">
+          <div className="day-attendance-preview-heading"><strong>{date ? `${formatDay(date)}, ${formatDate(date, { day: "numeric", month: "long", year: "numeric" })}` : "Selected day"}</strong><span>{totalPeriods} {totalPeriods === 1 ? "period" : "periods"}</span></div>
+          {scheduledSubjects.length ? <ul>{scheduledSubjects.map(({ subject, hours }) => <li key={subject.id}><span className="subject-color" style={{ backgroundColor: subject.color }}/><strong>{subject.name}</strong><span>{hours.length} {hours.length === 1 ? "period" : "periods"} · Hour{hours.length === 1 ? "" : "s"} {hours.join(", ")}</span></li>)}</ul> : <p>No saved timetable periods for this day. Fill and save the Attendly timetable before marking a whole day.</p>}
+        </section>
+        {existingScheduledRecords.length > 0 && <p className="day-attendance-warning" role="status">Existing records for these scheduled subjects on this date will be updated to match the whole-day choice. Other subject records will stay unchanged.</p>}
+        {scheduledSubjects.length > 0 && <p className="modal-helper">This creates one date-wise attendance record for each scheduled subject, using the number of periods in the timetable.</p>}
+        <div className="modal-actions day-attendance-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancel</button><div><button type="button" className="button button-quiet" disabled={!scheduledSubjects.length} onClick={() => onSave(date, "absent")}><Icon name="close"/>Mark all absent</button><button type="button" className="button button-primary" disabled={!scheduledSubjects.length} onClick={() => onSave(date, "present")}><Icon name="check"/>Mark all present</button></div></div>
+      </div>
     </section>
   </div>;
 }
