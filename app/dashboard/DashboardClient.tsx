@@ -21,6 +21,7 @@ type DialogState =
   | { kind: "semester" }
   | { kind: "delete-record"; record: AttendanceRecord }
   | { kind: "archive-subject"; subject: Subject }
+  | { kind: "archive-semester"; semester: Semester }
   | { kind: "delete-account" }
   | null;
 
@@ -186,7 +187,10 @@ export function DashboardClient() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const activeSemester = data?.semesters.find((semester) => semester.id === data.activeSemesterId) ?? data?.semesters[0] ?? null;
+  const activeSemester = data?.semesters.find((semester) => semester.id === data.activeSemesterId && !semester.archived)
+    ?? data?.semesters.find((semester) => !semester.archived)
+    ?? data?.semesters[0]
+    ?? null;
   const semesterSubjects = useMemo(
     () => data?.subjects.filter((subject) => subject.semesterId === activeSemester?.id) ?? [],
     [data?.subjects, activeSemester?.id],
@@ -229,19 +233,27 @@ export function DashboardClient() {
     const subject = currentSubjects.find((entry) => entry.id === subjectId);
     if (!subject) return;
     const today = dateKey(new Date());
-    const periods = 1;
-    const existing = data?.records.find((entry) => entry.subjectId === subjectId && entry.date === today);
-    const record: AttendanceRecord = {
-      id: existing?.id ?? createId(),
-      subjectId,
-      date: today,
-      periods,
-      attended: status === "present" ? periods : 0,
-    };
-    updateData((current) => ({ ...current, records: existing
-      ? current.records.map((entry) => entry.id === existing.id ? { ...entry, ...record, note: entry.note } : entry)
-      : [...current.records, record] }));
-    notify(`${status === "present" ? "Present" : "Absent"} saved for ${subject.name} on ${formatDay(today)} (${periods} ${periods === 1 ? "period" : "periods"}).`);
+    updateData((current) => {
+      const matching = current.records.filter((entry) => entry.subjectId === subjectId && entry.date === today);
+      const recordedPeriods = matching.reduce((sum, entry) => sum + entry.periods, 0);
+      if (recordedPeriods >= 12) {
+        return { ...current, records: [...current.records, { id: createId(), subjectId, date: today, periods: 1, attended: status === "present" ? 1 : 0 }] };
+      }
+      const recordedAttended = matching.reduce((sum, entry) => sum + entry.attended, 0);
+      const notes = [...new Set(matching.map((entry) => entry.note?.trim()).filter((note): note is string => Boolean(note)))];
+      const note = notes.join(" · ").slice(0, 140);
+      const record: AttendanceRecord = {
+        id: matching[0]?.id ?? createId(),
+        subjectId,
+        date: today,
+        periods: recordedPeriods + 1,
+        attended: recordedAttended + (status === "present" ? 1 : 0),
+        ...(note ? { note } : {}),
+      };
+      const matchingIds = new Set(matching.map((entry) => entry.id));
+      return { ...current, records: [...current.records.filter((entry) => !matchingIds.has(entry.id)), record] };
+    });
+    notify(`${status === "present" ? "Present" : "Absent"} added for ${subject.name} on ${formatDay(today)}. Existing attendance for this date was kept.`);
   }
   function saveAttendance(record: AttendanceRecord) {
     updateData((current) => ({
@@ -313,12 +325,30 @@ export function DashboardClient() {
     notify("Semester created. Loading its college timetable.");
   }
   function setActiveSemester(id: string) {
+    if (!data?.semesters.some((semester) => semester.id === id && !semester.archived)) return;
     updateData((current) => ({ ...current, activeSemesterId: id }));
   }
   function toggleArchive(subject: Subject) {
     updateData((current) => ({ ...current, subjects: current.subjects.map((entry) => entry.id === subject.id ? { ...entry, archived: !entry.archived } : entry) }));
     setDialog(null);
     notify(subject.archived ? "Subject restored to this semester." : "Subject archived. Its attendance history is preserved.");
+  }
+  function toggleArchiveSemester(semester: Semester) {
+    if (!semester.archived && (data?.semesters.filter((entry) => !entry.archived).length ?? 0) <= 1) {
+      setDialog(null);
+      notify("Create or restore another semester before archiving the only active semester.");
+      return;
+    }
+    updateData((current) => {
+      const archiving = !semester.archived;
+      const semesters = current.semesters.map((entry) => entry.id === semester.id ? { ...entry, archived: archiving } : entry);
+      const activeSemesterId = archiving && current.activeSemesterId === semester.id
+        ? semesters.find((entry) => entry.id !== semester.id && !entry.archived)?.id ?? current.activeSemesterId
+        : current.activeSemesterId;
+      return { ...current, semesters, activeSemesterId };
+    });
+    setDialog(null);
+    notify(semester.archived ? "Semester restored. Its subjects and attendance history are available again." : "Semester archived. Its subjects and attendance history are preserved.");
   }
   function deleteRecord(record: AttendanceRecord) {
     updateData((current) => ({ ...current, records: current.records.filter((entry) => entry.id !== record.id) }));
@@ -344,13 +374,16 @@ export function DashboardClient() {
       const subject = semesterSubjects.find((entry) => entry.id === record.subjectId);
       rows.push([record.date, formatDay(record.date), subject?.name ?? "", subject?.code ?? "", String(record.periods), String(record.attended), getRecordStatus(record)]);
     }
-    const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\r\n");
+    const csv = rows.map((row) => row.map((cell) => {
+      const spreadsheetSafeCell = /^[\u0000-\u0020]*[=+\-@]/.test(cell) ? `'${cell}` : cell;
+      return `"${spreadsheetSafeCell.replaceAll('"', '""')}"`;
+    }).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = `${activeSemester.name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}-attendance.csv`;
     link.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     notify("Your semester report downloaded as CSV.");
   }
   async function handleSignOut() {
@@ -452,6 +485,10 @@ export function DashboardClient() {
             missingCount={missingSubjects.length}
             onView={setView}
             onLog={openAttendance}
+            timetable={data.timetable}
+            semesterId={activeSemester?.id ?? ""}
+            todayDate={dateKey(new Date())}
+            onMarkWholeDay={openWholeDayAttendance}
           />}
           {view === "subjects" && <SubjectsView subjects={semesterSubjects} records={semesterRecords} onAdd={() => setDialog({ kind: "subject" })} onEdit={(subject) => setDialog({ kind: "subject", subject })} onLog={openAttendance} onQuickLog={quickLog} onArchive={(subject) => setDialog({ kind: "archive-subject", subject })} showArchived={showArchived} onToggleArchived={() => setShowArchived((value) => !value)} />}
           {view === "attendance" && <AttendanceView subjects={semesterSubjects} records={semesterRecords} onEdit={(record) => setDialog({ kind: "attendance", record })} onDelete={(record) => setDialog({ kind: "delete-record", record })} onAdd={() => openAttendance()} onWholeDay={() => openWholeDayAttendance()} />}
@@ -459,7 +496,7 @@ export function DashboardClient() {
           {view === "timetable" && activeSemester && <TimetableView semesterId={activeSemester.id} semesterName={activeSemester.name} academicProfile={user.academicProfile} semesterAcademicProfile={activeSemester.academicProfile} subjects={semesterSubjects} timetable={data.timetable} onSave={saveTimetable} onAddSubject={() => setDialog({ kind: "subject" })} />}
           {view === "planner" && <PlannerView subjects={currentSubjects} records={activeRecords} overallTarget={data.settings.overallTarget} />}
           {view === "reports" && <ReportsView subjects={currentSubjects} records={activeRecords} totals={totals} target={data.settings.overallTarget} onExport={exportCsv} />}
-          {view === "semesters" && <SemestersView semesters={data.semesters} activeSemesterId={data.activeSemesterId} onActivate={setActiveSemester} onCreate={() => setDialog({ kind: "semester" })} />}
+          {view === "semesters" && <SemestersView semesters={data.semesters} activeSemesterId={activeSemester?.id ?? ""} onActivate={setActiveSemester} onArchive={(semester) => setDialog({ kind: "archive-semester", semester })} onCreate={() => setDialog({ kind: "semester" })} />}
           {view === "settings" && <SettingsView settings={data.settings} preview={user.isPreview} onSave={saveSettings} onDeleteAccount={() => setDialog({ kind: "delete-account" })} />}
         </main>
       </div>
@@ -470,10 +507,57 @@ export function DashboardClient() {
       {dialog?.kind === "semester" && <SemesterModal defaultAcademicProfile={activeSemester?.academicProfile ?? user?.academicProfile} onClose={() => setDialog(null)} onSave={saveSemester} />}
       {dialog?.kind === "delete-record" && <ConfirmModal title="Remove this class record?" copy={`${formatDate(dialog.record.date, { weekday: "long", day: "numeric", month: "long" })} — this record will be removed from the semester totals.`} action="Remove record" onClose={() => setDialog(null)} onConfirm={() => deleteRecord(dialog.record)} />}
       {dialog?.kind === "archive-subject" && <ConfirmModal title={dialog.subject.archived ? "Restore this subject?" : "Archive this subject?"} copy={dialog.subject.archived ? "The subject will appear in your active subject list again." : "The subject’s history will stay saved, but it will leave your active dashboard totals."} action={dialog.subject.archived ? "Restore subject" : "Archive subject"} onClose={() => setDialog(null)} onConfirm={() => toggleArchive(dialog.subject)} />}
+      {dialog?.kind === "archive-semester" && <ConfirmModal title={dialog.semester.archived ? "Restore this semester?" : "Archive this semester?"} copy={dialog.semester.archived ? "This semester and its saved subjects, timetable, and attendance history will be available again." : "This semester will leave your active workspace. Its subjects, timetable, and attendance history will stay saved."} action={dialog.semester.archived ? "Restore semester" : "Archive semester"} onClose={() => setDialog(null)} onConfirm={() => toggleArchiveSemester(dialog.semester)} />}
       {dialog?.kind === "delete-account" && !user.isPreview && <DeleteAccountModal onClose={() => setDialog(null)} onConfirm={handleAccountDeletion} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );
+}
+
+function useModalFocus(onClose: () => void) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeHandler = useRef(onClose);
+  closeHandler.current = onClose;
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const activeDialog = dialog;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const getFocusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => element.getClientRects().length > 0);
+    const focusable = getFocusable();
+    (focusable[0] ?? dialog).focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeHandler.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = getFocusable();
+      if (!items.length) { event.preventDefault(); activeDialog.focus(); return; }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !activeDialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !activeDialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    activeDialog.addEventListener("keydown", onKeyDown);
+    return () => {
+      activeDialog.removeEventListener("keydown", onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
+
+  return dialogRef;
 }
 
 function initials(name: string) {
@@ -486,11 +570,12 @@ function StatusPill({ health, text }: { health: ReturnType<typeof getHealth>; te
 }
 
 function OverviewView({
-  userName, todayLabel, subjects, records, totals, overallTarget, missingCount, onView, onLog,
+  userName, todayLabel, subjects, records, totals, overallTarget, missingCount, onView, onLog, timetable, semesterId, todayDate, onMarkWholeDay,
 }: {
   userName: string; todayLabel: string; subjects: Subject[]; records: AttendanceRecord[];
   totals: ReturnType<typeof getTotals>; overallTarget: number; missingCount: number;
-  onView: (view: ViewKey) => void; onLog: (subjectId?: string) => void;
+  timetable: TimetableEntry[]; semesterId: string; todayDate: string;
+  onView: (view: ViewKey) => void; onLog: (subjectId?: string) => void; onMarkWholeDay: (date?: string) => void;
 }) {
   const health = getHealth(totals.percentage, overallTarget);
   const sortedSubjects = [...subjects].map((subject) => ({ subject, totals: getSubjectTotals(records, subject.id) }))
@@ -498,6 +583,28 @@ function OverviewView({
   const recent = [...records].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
   const labelDate = todayLabel.split(",").slice(1).join(",").trim();
+  const weekday = localDate(todayDate).getDay();
+  const scheduledToday = timetable
+    .filter((entry) => entry.semesterId === semesterId && entry.weekday === weekday && subjectById.has(entry.subjectId))
+    .sort((a, b) => a.hour - b.hour);
+  const scheduleBySubject = new Map<string, number[]>();
+  for (const entry of scheduledToday) scheduleBySubject.set(entry.subjectId, [...(scheduleBySubject.get(entry.subjectId) ?? []), entry.hour]);
+  const attendanceBySubject = new Map<string, AttendanceRecord[]>();
+  for (const record of records.filter((entry) => entry.date === todayDate)) {
+    attendanceBySubject.set(record.subjectId, [...(attendanceBySubject.get(record.subjectId) ?? []), record]);
+  }
+
+  function hourLabel(hours: number[]) {
+    const ranges: string[] = [];
+    for (let index = 0; index < hours.length;) {
+      const start = hours[index];
+      let end = start;
+      while (index + 1 < hours.length && hours[index + 1] === end + 1) { index += 1; end = hours[index]; }
+      ranges.push(start === end ? `Hour ${start}` : `Hours ${start}–${end}`);
+      index += 1;
+    }
+    return ranges.join(" · ");
+  }
   return (
     <>
       <section className="metric-grid" aria-label="Semester attendance summary">
@@ -512,6 +619,26 @@ function OverviewView({
         <MetricCard icon="calendar" label="Classes conducted" value={String(totals.conducted)} foot={`${totals.attended} attended`} />
         <MetricCard icon="book" label="Subjects" value={String(subjects.length)} foot={subjects.length ? "In this semester" : "Add your first subject"} />
         <MetricCard icon="target" label="Need attention" value={String(missingCount)} foot={missingCount ? "Below subject target" : "All subjects on track"} urgent={missingCount > 0} />
+      </section>
+
+      <section className="card today-classes-card">
+        <div className="card-heading"><div><h2>Today’s classes</h2><p>{formatDay(todayDate)} · From your saved weekly timetable</p></div><button className="text-link" onClick={() => onView("timetable")}>View timetable <Icon name="arrow"/></button></div>
+        {scheduledToday.length ? <>
+          <div className="today-class-list">{[...scheduleBySubject].map(([subjectId, hours]) => {
+            const subject = subjectById.get(subjectId)!;
+            const dayRecords = attendanceBySubject.get(subjectId) ?? [];
+            const conducted = dayRecords.reduce((sum, record) => sum + record.periods, 0);
+            const attended = dayRecords.reduce((sum, record) => sum + record.attended, 0);
+            const planned = hours.length;
+            const status = !dayRecords.length ? "Not recorded" : conducted < planned ? `${conducted}/${planned} logged · ${attended} attended` : attended === conducted ? "Present" : attended === 0 ? "Absent" : `${attended} of ${conducted} attended`;
+            const statusHealth = !dayRecords.length ? "empty" : conducted < planned ? "watch" : attended === conducted ? "safe" : attended === 0 ? "critical" : "watch";
+            return <div className="today-class-row" key={subjectId}>
+              <div className="today-class-subject"><span className="subject-color" style={{ backgroundColor: subject.color }}/><div><strong>{subject.name}</strong><span>{hourLabel(hours)}</span></div></div>
+              <StatusPill health={statusHealth} text={status}/>
+            </div>;
+          })}</div>
+          <div className="today-classes-actions"><span>{scheduledToday.length} {scheduledToday.length === 1 ? "period" : "periods"} scheduled today</span><button className="button button-primary" onClick={() => onMarkWholeDay(todayDate)}><Icon name="calendar"/>Mark whole day</button></div>
+        </> : <div className="today-classes-empty"><p>{weekday === 0 || weekday === 6 ? "No college periods are scheduled on weekends." : "No classes are listed for today yet. Fill in your weekly timetable to see your classes here."}</p>{weekday !== 0 && weekday !== 6 && <button className="button button-quiet" onClick={() => onView("timetable")}><Icon name="edit"/>Fill timetable</button>}</div>}
       </section>
 
       <section className="dashboard-grid" aria-label="Attendance trends and subjects">
@@ -897,7 +1024,7 @@ function TimetableView({
       const hour = column.hour;
       const subjectId = draft[timetableKey(day.weekday, hour)] ?? "";
       let span = 1;
-      if (subjectId) {
+      if (!editing && subjectId) {
         while (index + span < columns.length) {
           const nextColumn = columns[index + span];
           if (nextColumn.kind !== "hour" || nextColumn.hour !== hour + span) break;
@@ -908,7 +1035,7 @@ function TimetableView({
       const subject = subjectById.get(subjectId);
       const hourDescription = span === 1 ? `hour ${hour}` : `hours ${hour} to ${hour + span - 1}`;
       cells.push(<td colSpan={span} key={`${column.kind}-${hour}`}>
-        {editing ? <label className="timetable-slot-editor"><span className="sr-only">{day.label}, {hourDescription}</span><select aria-label={`${day.label}, ${hourDescription}`} value={subjectId} disabled={!activeSubjects.length} onChange={(event) => setSlot(day.weekday, hour, event.target.value, span)}>
+        {editing ? <label className="timetable-slot-editor"><span className="sr-only">{day.label}, hour {hour}</span><select aria-label={`${day.label}, hour ${hour}`} value={subjectId} disabled={!activeSubjects.length} onChange={(event) => setSlot(day.weekday, hour, event.target.value, 1)}>
           <option value="">Free hour</option>{subjects.map((option) => <option value={option.id} key={option.id} disabled={option.archived}>{option.name}{option.archived ? " · archived" : ""}</option>)}
         </select></label> : subject ? <div className={`timetable-subject-chip ${subject.archived ? "archived" : ""}`} style={{ borderLeftColor: subject.color }}><strong>{subject.name}</strong>{subject.code && <small>{subject.code}</small>}</div> : <div className="timetable-free-slot">Free</div>}
       </td>);
@@ -1141,13 +1268,14 @@ function ReportsView({ subjects, records, totals, target, onExport }: { subjects
   </>;
 }
 
-function SemestersView({ semesters, activeSemesterId, onActivate, onCreate }: { semesters: Semester[]; activeSemesterId: string; onActivate: (id: string) => void; onCreate: () => void }) {
+function SemestersView({ semesters, activeSemesterId, onActivate, onArchive, onCreate }: { semesters: Semester[]; activeSemesterId: string; onActivate: (id: string) => void; onArchive: (semester: Semester) => void; onCreate: () => void }) {
+  const activeCount = semesters.filter((semester) => !semester.archived).length;
   return <>
-    <section className="semester-list">{semesters.map((semester) => <article className="card semester-row" key={semester.id}>
-      <div className="semester-info"><span className="semester-symbol"><Icon name="layers"/></span><div><strong>{semester.name}{semester.id === activeSemesterId && <span className="active-term-tag">Active</span>}</strong><span>{semester.startDate ? formatDate(semester.startDate, { month: "short", year: "numeric" }) : "Start date not set"}{semester.endDate ? ` — ${formatDate(semester.endDate, { month: "short", year: "numeric" })}` : " — End date not set"}</span></div></div>
-      {semester.id !== activeSemesterId ? <button className="button button-quiet" onClick={() => onActivate(semester.id)}>Set active</button> : <span className="semester-current"><Icon name="check-circle"/> Current</span>}
+    <section className="semester-list">{semesters.map((semester) => <article className={`card semester-row ${semester.archived ? "archived" : ""}`} key={semester.id}>
+      <div className="semester-info"><span className="semester-symbol"><Icon name="layers"/></span><div><strong>{semester.name}{semester.id === activeSemesterId && <span className="active-term-tag">Active</span>}{semester.archived && <span className="archived-term-tag">Archived</span>}</strong><span>{semester.startDate ? formatDate(semester.startDate, { month: "short", year: "numeric" }) : "Start date not set"}{semester.endDate ? ` — ${formatDate(semester.endDate, { month: "short", year: "numeric" })}` : " — End date not set"}</span></div></div>
+      <div className="semester-actions">{!semester.archived && semester.id === activeSemesterId && <span className="semester-current"><Icon name="check-circle"/> Current</span>}{!semester.archived && semester.id !== activeSemesterId && <button className="button button-quiet" onClick={() => onActivate(semester.id)}>Set active</button>}<button className={`button ${semester.archived ? "button-quiet" : "button-danger"}`} disabled={!semester.archived && activeCount <= 1} title={!semester.archived && activeCount <= 1 ? "Create or restore another active semester first" : undefined} onClick={() => onArchive(semester)}>{semester.archived ? "Restore" : "Archive"}</button></div>
     </article>)}</section>
-    <div className="semester-help"><div><strong>Keep each term separate</strong><p>Subjects and attendance are grouped by semester so old records remain available when you switch terms.</p></div><button className="button button-primary" onClick={onCreate}><Icon name="plus"/>Create semester</button></div>
+    <div className="semester-help"><div><strong>Keep each term separate</strong><p>Archived terms stay saved with their subjects, timetable, and attendance history. Restore a term whenever you need it.</p></div><button className="button button-primary" onClick={onCreate}><Icon name="plus"/>Create semester</button></div>
   </>;
 }
 
@@ -1180,6 +1308,7 @@ function DeleteAccountModal({ onClose, onConfirm }: { onClose: () => void; onCon
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const modalRef = useModalFocus(() => { if (!busy) onClose(); });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1199,7 +1328,7 @@ function DeleteAccountModal({ onClose, onConfirm }: { onClose: () => void; onCon
   }
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <section className="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+    <section className="modal confirm-modal" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
       <div className="modal-header"><div><h2 id="delete-account-title">Delete your account?</h2><p>This permanently erases your account and all saved attendance data.</p></div><button className="icon-button modal-close" type="button" onClick={onClose} disabled={busy} aria-label="Close dialog"><Icon name="close"/></button></div>
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Current password<input type="password" autoComplete="current-password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)}/></label>
@@ -1226,6 +1355,7 @@ function AttendanceModal({
   const [attended, setAttended] = useState(initialRecord?.attended ?? 1);
   const [note, setNote] = useState(initialRecord?.note ?? "");
   const [error, setError] = useState("");
+  const modalRef = useModalFocus(onClose);
 
   function changePeriods(value: number) {
     const next = Math.max(1, Math.min(12, value || 1));
@@ -1258,7 +1388,7 @@ function AttendanceModal({
   }
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title">
+    <section className="modal" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title">
       <div className="modal-header"><div><h2 id="attendance-modal-title">{initialRecord ? "Edit class record" : "Log attendance"}</h2><p>Save the class against its date and subject.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Subject
@@ -1286,6 +1416,7 @@ function WholeDayAttendanceModal({ subjects, records, timetable, semesterId, ini
   onClose: () => void; onSave: (date: string, status: "present" | "absent") => void;
 }) {
   const [date, setDate] = useState(initialDate ?? dateKey(new Date()));
+  const modalRef = useModalFocus(onClose);
   const weekday = date ? localDate(date).getDay() : -1;
   const activeSubjectIds = new Set(subjects.map((subject) => subject.id));
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
@@ -1305,7 +1436,7 @@ function WholeDayAttendanceModal({ subjects, records, timetable, semesterId, ini
   const totalPeriods = scheduledSubjects.reduce((sum, entry) => sum + entry.hours.length, 0);
 
   return <div className="modal-backdrop day-attendance-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="modal day-attendance-modal" role="dialog" aria-modal="true" aria-labelledby="whole-day-modal-title">
+    <section className="modal day-attendance-modal" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="whole-day-modal-title">
       <div className="modal-header"><div><h2 id="whole-day-modal-title">Mark attendance for a whole day</h2><p>Apply one status to every subject scheduled in your saved Attendly timetable.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <div className="modal-form">
         <label className="field-label">Class date<input type="date" required value={date} onChange={(event) => setDate(event.target.value)}/></label>
@@ -1334,6 +1465,7 @@ function SubjectModal({
   const [required, setRequired] = useState(subject?.requiredAttendance ?? defaultTarget);
   const [color, setColor] = useState(subject?.color ?? subjectColors[0]);
   const [error, setError] = useState("");
+  const modalRef = useModalFocus(onClose);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1352,7 +1484,7 @@ function SubjectModal({
   }
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="subject-modal-title">
+    <section className="modal" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="subject-modal-title">
       <div className="modal-header"><div><h2 id="subject-modal-title">{subject ? "Edit subject" : "Add a subject"}</h2><p>Keep subject details here and manage your week in Timetable.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Subject name<input autoFocus required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Database Systems"/></label>
@@ -1391,6 +1523,7 @@ function SemesterModal({ defaultAcademicProfile, onClose, onSave }: {
   const [semesterNumber, setSemesterNumber] = useState("");
   const [section, setSection] = useState(defaultAcademicProfile?.sectionCode ?? "none");
   const [error, setError] = useState("");
+  const modalRef = useModalFocus(onClose);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1441,7 +1574,7 @@ function SemesterModal({ defaultAcademicProfile, onClose, onSave }: {
     });
   }
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="semester-modal-title">
+    <section className="modal" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="semester-modal-title">
       <div className="modal-header"><div><h2 id="semester-modal-title">Create a semester</h2><p>Set the academic details used to fetch this semester’s college timetable.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Semester name<input autoFocus required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Semester 06"/></label>
@@ -1489,8 +1622,9 @@ function SemesterModal({ defaultAcademicProfile, onClose, onSave }: {
 }
 
 function ConfirmModal({ title, copy, action, onClose, onConfirm }: { title: string; copy: string; action: string; onClose: () => void; onConfirm: () => void }) {
+  const modalRef = useModalFocus(onClose);
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+    <section className="modal confirm-modal" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
       <div className="modal-header"><div><h2 id="confirm-modal-title">{title}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <p className="confirm-copy">{copy}</p>
       <div className="modal-actions"><button className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-danger" onClick={onConfirm}><Icon name="archive"/>{action}</button></div>

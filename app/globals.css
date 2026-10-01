@@ -261,6 +261,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .recent-subject strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
 .recent-periods { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .recent-empty { padding: 18px 0; color: var(--muted); font-size: 12px; }
+.today-classes-card { margin-top: 15px; padding: 19px 20px 13px; }
+.today-class-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 0 24px; margin-top: 12px; }
+.today-class-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 10px; min-height: 57px; border-top: 1px solid var(--line); }
+.today-class-subject { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.today-class-subject .subject-color { width: 6px; height: 28px; flex-basis: 6px; }
+.today-class-subject > div { min-width: 0; }
+.today-class-subject strong { display: block; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
+.today-class-subject span:last-child { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+.today-class-row .status-pill { white-space: normal; text-align: center; }
+.today-classes-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.today-classes-actions > span, .today-classes-empty p { color: var(--muted); font-size: 11px; }
+.today-classes-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0 4px; }
+.today-classes-empty p { margin: 0; }
 
 /* Subject management */
 .subject-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 13px; }
@@ -445,11 +458,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .report-summary-card strong { display: block; margin-top: 8px; color: var(--ink); font-size: 26px; font-weight: 610; letter-spacing: -.04em; }
 .semester-list { display: grid; gap: 10px; }
 .semester-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 16px; }
+.semester-row.archived { background: var(--panel-soft); }
+.semester-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.semester-actions .button { min-height: 35px; }
+.archived-term-tag { display: inline-flex !important; margin-left: 9px !important; padding: 2px 7px; border-radius: 999px; color: var(--muted) !important; background: var(--panel-soft); font-size: 9px !important; font-weight: 700; vertical-align: 1px; }
 .semester-info { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .semester-symbol { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; color: #356d5a; background: var(--mint-soft); }
 .semester-symbol svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .semester-info strong { display: block; color: var(--ink); font-size: 13px; font-weight: 650; }
 .semester-info span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.semester-info strong .active-term-tag, .semester-info strong .archived-term-tag { display: inline-flex; margin-top: 0; }
 .settings-layout { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(280px,.9fr); gap: 14px; }
 .settings-card { padding: 20px; }
 .settings-card h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 670; }
@@ -787,6 +805,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .semester-info { gap: 9px; }
   .semester-info strong { font-size: 12px; }
   .semester-row .button { min-height: 34px; padding: 0 9px; font-size: 11px; }
+  .semester-actions { gap: 6px; }
+  .today-classes-card { padding: 16px; }
+  .today-classes-actions { align-items: stretch; flex-direction: column; }
+  .today-classes-actions .button { width: 100%; }
+  .today-classes-empty { align-items: flex-start; flex-direction: column; }
   .semester-help { align-items: flex-start; flex-direction: column; }
   .report-heading { align-items: flex-start; }
   .report-heading .button { min-height: 34px; padding: 0 9px; font-size: 11px; white-space: nowrap; }
@@ -797,4 +820,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .settings-field { grid-template-columns: minmax(0,1fr) 78px; gap: 9px; }
   .settings-field input { width: 78px; }
   .report-summary-card span { min-height: 31px; font-size: 10px; line-height: 1.35; }
+  .today-class-row { grid-template-columns: minmax(0,1fr) minmax(76px, auto); gap: 6px; }
+  .today-class-row .status-pill { padding: 4px 7px; font-size: 9px; }
+  .semester-row { align-items: flex-start; }
+  .semester-actions { flex-direction: column; align-items: flex-end; }
 }
