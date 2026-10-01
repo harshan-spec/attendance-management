@@ -103,7 +103,7 @@ function isWorkspace(value: unknown): value is WorkspaceData {
   }
 
   const settings = value.settings;
-  return typeof settings.overallTarget === "number" && settings.overallTarget >= 0 && settings.overallTarget <= 100 &&
+  return typeof settings.overallTarget === "number" && settings.overallTarget >= 80 && settings.overallTarget <= 100 &&
     typeof settings.defaultSubjectTarget === "number" && settings.defaultSubjectTarget >= 75 && settings.defaultSubjectTarget <= 100 &&
     (settings.theme === "light" || settings.theme === "dark");
 }
@@ -197,7 +197,7 @@ export async function GET() {
       hour: entry.hour,
     })),
     settings: settingsResult.data ? {
-      overallTarget: Number(settingsResult.data.overall_target),
+      overallTarget: Math.max(80, Number(settingsResult.data.overall_target)),
       defaultSubjectTarget: Number(settingsResult.data.default_subject_target),
       theme: settingsResult.data.theme as "light" | "dark",
     } : { overallTarget: 80, defaultSubjectTarget: 75, theme: "light" },
