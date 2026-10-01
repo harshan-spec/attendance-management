@@ -1127,8 +1127,10 @@ function PlannerView({ subjects, records, overallTarget }: {
     : selectedSubject ? subjectForecasts[selectedSubject.id] ?? emptyPlannerForecast : emptyPlannerForecast;
   const futureClasses = parsePlannerCount(activeForecast.upcoming);
   const plannedAttendances = parsePlannerCount(activeForecast.attending);
+  const overallCurrent = getTotals(records);
+  const effectiveOverallTarget = Math.max(80, overallTarget);
   const current = scope === "overall"
-    ? getTotals(records)
+    ? overallCurrent
     : selectedSubject ? getSubjectTotals(records, selectedSubject.id) : getTotals([]);
   const target = scope === "overall" ? Math.max(80, overallTarget) : Math.max(75, selectedSubject?.requiredAttendance ?? 75);
   const targetName = scope === "overall" ? `${target}% overall` : `${target}% for ${selectedSubject?.name ?? "this subject"}`;
@@ -1140,6 +1142,18 @@ function PlannerView({ subjects, records, overallTarget }: {
   const plannedProjection = futureClasses !== null && plannedAttendances !== null && current.conducted + futureClasses > 0
     ? ((current.attended + Math.min(plannedAttendances, futureClasses)) / (current.conducted + futureClasses)) * 100
     : null;
+  const overallAttendAll = futureClasses === null ? null : afterAttending(overallCurrent, futureClasses);
+  const overallMissAll = futureClasses === null ? null : afterMissing(overallCurrent, futureClasses);
+  const overallPlanned = futureClasses !== null && plannedAttendances !== null && overallCurrent.conducted + futureClasses > 0
+    ? ((overallCurrent.attended + Math.min(plannedAttendances, futureClasses)) / (overallCurrent.conducted + futureClasses)) * 100
+    : null;
+  const overallNeededInWindow = futureClasses === null ? null : classesToAttendWithinUpcoming(overallCurrent, effectiveOverallTarget, futureClasses);
+  const neededForBoth = neededInWindow === null || overallNeededInWindow === null ? null : Math.max(neededInWindow, overallNeededInWindow);
+  const jointTargetDescription = futureClasses === null || futureClasses === 0
+    ? "Enter upcoming periods to check both attendance requirements."
+    : neededForBoth === null || neededForBoth > futureClasses
+      ? `Attending all ${futureClasses} cannot meet both targets in this window. More attended periods are needed.`
+      : `Attend at least ${neededForBoth} of ${futureClasses} to meet both targets; up to ${futureClasses - neededForBoth} can be missed.`;
 
   function updateForecast(update: Partial<PlannerForecast>) {
     if (scope === "overall") {
@@ -1239,6 +1253,13 @@ function PlannerView({ subjects, records, overallTarget }: {
       <div className="card planner-result"><div className="overline">ATTEND TO MEET {targetName.toUpperCase()}</div><strong>{neededValue}</strong><p>{neededDescription}</p></div>
       <div className="card planner-result"><div className="overline">SAFE ABSENCES AT {target}%</div><strong>{safeAbsencesValue}</strong><p>{safeAbsencesDescription}</p></div>
       <div className="card planner-result"><div className="overline">YOUR PLANNED OUTCOME</div><strong>{futureClasses === null ? "Enter periods" : plannedAttendances === null ? "Set your plan" : `${Math.min(plannedAttendances, futureClasses)} of ${futureClasses}`}</strong><p>{plannedProjection === null ? "Set both counts to see the projected attendance for your plan." : `${formatPercentage(plannedProjection)} after attending ${Math.min(plannedAttendances ?? 0, futureClasses ?? 0)} and missing ${(futureClasses ?? 0) - Math.min(plannedAttendances ?? 0, futureClasses ?? 0)} periods.`}</p></div>
+      {scope === "subject" && <div className="card planner-result" aria-label="Overall impact of the subject plan">
+        <div className="overline">OVERALL IMPACT · {effectiveOverallTarget}% TARGET</div>
+        <strong>{formatPercentage(overallPlanned ?? overallAttendAll)}</strong>
+        <p>{futureClasses === null ? "Enter a count to see how this subject changes your overall attendance." : `Attend all: ${formatPercentage(overallAttendAll)}. Miss all: ${formatPercentage(overallMissAll)}.${overallPlanned === null ? "" : ` Your plan: ${formatPercentage(overallPlanned)}.`}`}</p>
+        <p>{jointTargetDescription}</p>
+        <p>Only {selectedSubject?.name}’s upcoming periods are added. Other subjects keep their current totals.</p>
+      </div>}
     </div>}
   </div>;
 }
