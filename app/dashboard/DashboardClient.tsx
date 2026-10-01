@@ -203,7 +203,7 @@ export function DashboardClient() {
   const totals = getTotals(activeRecords);
   const missingSubjects = currentSubjects.filter((subject) => {
     const summary = getSubjectTotals(activeRecords, subject.id);
-    return summary.percentage === null || summary.percentage < subject.requiredAttendance;
+    return summary.percentage !== null && summary.percentage < subject.requiredAttendance;
   });
 
   function notify(message: string) { setToast(message); }
@@ -618,7 +618,7 @@ function OverviewView({
         </div>
         <MetricCard icon="calendar" label="Classes conducted" value={String(totals.conducted)} foot={`${totals.attended} attended`} />
         <MetricCard icon="book" label="Subjects" value={String(subjects.length)} foot={subjects.length ? "In this semester" : "Add your first subject"} />
-        <MetricCard icon="target" label="Need attention" value={String(missingCount)} foot={missingCount ? "Below subject target" : "All subjects on track"} urgent={missingCount > 0} />
+        <MetricCard icon="target" label="Need attention" value={String(missingCount)} foot={missingCount ? "Below subject target" : "No subjects below target"} urgent={missingCount > 0} />
       </section>
 
       <section className="card today-classes-card">
@@ -1267,7 +1267,7 @@ function PlannerView({ subjects, records, overallTarget }: {
 function ReportsView({ subjects, records, totals, target, onExport }: { subjects: Subject[]; records: AttendanceRecord[]; totals: ReturnType<typeof getTotals>; target: number; onExport: () => void }) {
   const belowTarget = subjects.filter((subject) => {
     const summary = getSubjectTotals(records, subject.id);
-    return summary.percentage === null || summary.percentage < subject.requiredAttendance;
+    return summary.percentage !== null && summary.percentage < subject.requiredAttendance;
   }).length;
   return <>
     <div className="report-summary">
