@@ -467,13 +467,13 @@ export function DashboardClient() {
         </header>
 
         <main className="app-content">
-          <div className="page-heading">
+          <div className={`page-heading ${view === "overview" ? "page-heading-overview" : ""}`}>
             <div className="page-heading-copy">
               {view === "overview" && <div className="date-kicker">{todayLabel}</div>}
               <h1>{view === "overview" ? `${greet}, ${user.name.split(" ")[0]}` : meta.title}</h1>
               <p>{view === "overview" ? meta.subtitle : view === "subjects" ? `Your overall floor is ${data.settings.overallTarget}%. Subject floors start at ${data.settings.defaultSubjectTarget}%.` : meta.subtitle}</p>
             </div>
-            <div className="heading-actions">
+            <div className={`heading-actions ${view === "overview" ? "overview-heading-actions" : ""}`}>
               {view === "subjects" && <button className="button button-primary" onClick={() => setDialog({ kind: "subject" })}><Icon name="plus" />Add subject</button>}
               {view === "overview" && <>
                 <button className="button button-quiet" onClick={() => openWholeDayAttendance()} aria-label="Mark whole day" title="Mark whole day"><Icon name="calendar"/><span>Mark whole day</span></button>

@@ -671,6 +671,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .page-heading { gap: 8px; }
   .page-heading .heading-actions .button { font-size: 0; gap: 0; width: 38px; padding: 0; }
   .page-heading .heading-actions .button svg { width: 18px; height: 18px; }
+  .page-heading-overview { flex-wrap: wrap; }
+  .page-heading-overview .page-heading-copy { width: 100%; }
+  .page-heading-overview .overview-heading-actions { width: 100%; justify-content: flex-end; }
+  .page-heading-overview .overview-heading-actions .button { font-size: 11px; gap: 6px; width: auto; padding: 0 9px; }
+  .page-heading-overview .overview-heading-actions .button svg { width: 15px; height: 15px; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .overall-card { grid-column: 1 / -1; }
   .metric-card { min-height: 108px; }
