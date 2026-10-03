@@ -1482,16 +1482,15 @@ function SubjectModal({
 }) {
   const [name, setName] = useState(subject?.name ?? "");
   const [code, setCode] = useState(subject?.code ?? "");
-  const [credits, setCredits] = useState(subject?.credits ?? 3);
-  const [required, setRequired] = useState(subject?.requiredAttendance ?? defaultTarget);
-  const [color, setColor] = useState(subject?.color ?? subjectColors[0]);
+  const credits = subject?.credits ?? 3;
+  const required = subject?.requiredAttendance ?? Math.max(75, defaultTarget);
+  const color = subject?.color ?? subjectColors[0];
   const [error, setError] = useState("");
   const modalRef = useModalFocus(onClose);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) { setError("Enter a subject name."); return; }
-    if (required < 75 || required > 100) { setError("A subject target must be from 75% to 100%."); return; }
     onSave({
       id: subject?.id ?? createId(),
       semesterId,
@@ -1509,15 +1508,8 @@ function SubjectModal({
       <div className="modal-header"><div><h2 id="subject-modal-title">{subject ? "Edit subject" : "Add a subject"}</h2><p>Keep subject details here and manage your week in Timetable.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Subject name<input autoFocus required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Database Systems"/></label>
-        <div className="form-two-col">
-          <label className="field-label">Subject code <span className="optional-label">Optional</span><input maxLength={20} value={code} onChange={(event) => setCode(event.target.value)} placeholder="e.g. CS 301"/></label>
-          <label className="field-label">Credits<input type="number" min="1" max="10" value={credits} onChange={(event) => setCredits(Number(event.target.value))}/></label>
-        </div>
-        <div className="form-two-col">
-          <label className="field-label">Required attendance (%)<input type="number" min="75" max="100" value={required} onChange={(event) => setRequired(Math.max(75, Math.min(100, Number(event.target.value) || 75)))}/></label>
-          <label className="field-label">Subject color<select value={color} onChange={(event) => setColor(event.target.value)}>{subjectColors.map((value, index) => <option value={value} key={value}>Color {index + 1}</option>)}</select></label>
-        </div>
-        <p className="modal-helper">The subject floor can be raised, but it cannot be set below 75%.</p>
+        <label className="field-label">Subject code <span className="optional-label">Optional</span><input maxLength={20} value={code} onChange={(event) => setCode(event.target.value)} placeholder="e.g. CS 301"/></label>
+        <p className="modal-helper">Attendance minimums stay at 80% overall and 75% for each subject.</p>
         {error && <p className="form-message form-error" role="alert">{error}</p>}
         <div className="modal-actions"><button className="button button-quiet" type="button" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit"><Icon name="check"/>{subject ? "Save subject" : "Add subject"}</button></div>
       </form>
