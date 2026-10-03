@@ -825,3 +825,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .semester-row { align-items: flex-start; }
   .semester-actions { flex-direction: column; align-items: flex-end; }
 }
+
+/* Overview subject summaries adapt to the available panel width. */
+.overview-subjects { margin-top: 15px; padding: 20px; }
+.overview-subject-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; margin-top: 20px; }
+.overview-subject-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; }
+.overview-subject-name h3 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+.overview-subject-name p { margin: 5px 0 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.attendance-percentage { display: inline-flex; align-items: center; gap: 9px; }
+.attendance-warning-icon { display: inline-flex; flex: 0 0 auto; color: #a16615; }
+.attendance-warning-icon svg { width: 17px; height: 17px; }
+.overall-card .attendance-warning-icon { color: #ffd28a; }
+.app-shell[data-theme="dark"] .overview-subject-card .attendance-warning-icon { color: #ffd28a; }
+.overview-subject-percentage { margin-top: 20px; color: var(--ink); font-size: 29px; font-weight: 650; letter-spacing: -.04em; }
+.overview-subject-target { margin: 5px 0 18px; color: var(--muted); font-size: 11px; }
+.overview-subject-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.overview-subject-counts dt { color: var(--muted); font-size: 11px; }
+.overview-subject-counts dd { margin: 6px 0 0; color: var(--ink); font-size: 20px; font-weight: 650; }
+@media (max-width: 480px) {
+  .overview-subjects { padding: 15px; }
+  .overview-subjects .card-heading { flex-wrap: wrap; }
+  .overview-subject-card { padding: 16px; }
+}

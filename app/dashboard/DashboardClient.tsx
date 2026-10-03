@@ -481,21 +481,7 @@ export function DashboardClient() {
             </div>
           </div>
 
-          {view === "overview" && <OverviewView
-            userName={user.name}
-            todayLabel={todayLabel}
-            subjects={currentSubjects}
-            records={activeRecords}
-            totals={totals}
-            overallTarget={data.settings.overallTarget}
-            missingCount={missingSubjects.length}
-            onView={setView}
-            onLog={openAttendance}
-            timetable={data.timetable}
-            semesterId={activeSemester?.id ?? ""}
-            todayDate={dateKey(new Date())}
-            onMarkWholeDay={openWholeDayAttendance}
-          />}
+          {view === "overview" && <OverviewView todayLabel={todayLabel} subjects={currentSubjects} records={activeRecords} totals={totals} overallTarget={data.settings.overallTarget} missingCount={missingSubjects.length} onView={setView} />}
           {view === "subjects" && <SubjectsView subjects={semesterSubjects} records={semesterRecords} onAdd={() => setDialog({ kind: "subject" })} onEdit={(subject) => setDialog({ kind: "subject", subject })} onLog={openAttendance} onQuickLog={quickLog} onArchive={(subject) => setDialog({ kind: "archive-subject", subject })} showArchived={showArchived} onToggleArchived={() => setShowArchived((value) => !value)} />}
           {view === "attendance" && <AttendanceView subjects={semesterSubjects} records={semesterRecords} onEdit={(record) => setDialog({ kind: "attendance", record })} onDelete={(record) => setDialog({ kind: "delete-record", record })} onAdd={() => openAttendance()} onWholeDay={() => openWholeDayAttendance()} />}
           {view === "calendar" && <CalendarView subjects={semesterSubjects} records={semesterRecords} onAdd={(date) => openAttendance(undefined, date)} onWholeDay={openWholeDayAttendance} />}
@@ -575,49 +561,24 @@ function StatusPill({ health, text }: { health: ReturnType<typeof getHealth>; te
   return <span className={`status-pill ${health}`}><span className="status-dot" />{label}</span>;
 }
 
-function OverviewView({
-  userName, todayLabel, subjects, records, totals, overallTarget, missingCount, onView, onLog, timetable, semesterId, todayDate, onMarkWholeDay,
-}: {
-  userName: string; todayLabel: string; subjects: Subject[]; records: AttendanceRecord[];
+function AttendanceWarning({ label }: { label: string }) {
+  return <span className="attendance-warning-icon" role="img" aria-label={label} title={label}><Icon name="alert" /></span>;
+}
+
+function OverviewView({ todayLabel, subjects, records, totals, overallTarget, missingCount, onView }: {
+  todayLabel: string; subjects: Subject[]; records: AttendanceRecord[];
   totals: ReturnType<typeof getTotals>; overallTarget: number; missingCount: number;
-  timetable: TimetableEntry[]; semesterId: string; todayDate: string;
-  onView: (view: ViewKey) => void; onLog: (subjectId?: string) => void; onMarkWholeDay: (date?: string) => void;
+  onView: (view: ViewKey) => void;
 }) {
   const health = getHealth(totals.percentage, overallTarget);
-  const sortedSubjects = [...subjects].map((subject) => ({ subject, totals: getSubjectTotals(records, subject.id) }))
-    .sort((a, b) => (a.totals.percentage ?? -1) - (b.totals.percentage ?? -1));
-  const recent = [...records].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
   const labelDate = todayLabel.split(",").slice(1).join(",").trim();
-  const weekday = localDate(todayDate).getDay();
-  const scheduledToday = timetable
-    .filter((entry) => entry.semesterId === semesterId && entry.weekday === weekday && subjectById.has(entry.subjectId))
-    .sort((a, b) => a.hour - b.hour);
-  const scheduleBySubject = new Map<string, number[]>();
-  for (const entry of scheduledToday) scheduleBySubject.set(entry.subjectId, [...(scheduleBySubject.get(entry.subjectId) ?? []), entry.hour]);
-  const attendanceBySubject = new Map<string, AttendanceRecord[]>();
-  for (const record of records.filter((entry) => entry.date === todayDate)) {
-    attendanceBySubject.set(record.subjectId, [...(attendanceBySubject.get(record.subjectId) ?? []), record]);
-  }
-
-  function hourLabel(hours: number[]) {
-    const ranges: string[] = [];
-    for (let index = 0; index < hours.length;) {
-      const start = hours[index];
-      let end = start;
-      while (index + 1 < hours.length && hours[index + 1] === end + 1) { index += 1; end = hours[index]; }
-      ranges.push(start === end ? `Hour ${start}` : `Hours ${start}–${end}`);
-      index += 1;
-    }
-    return ranges.join(" · ");
-  }
   return (
     <>
       <section className="metric-grid" aria-label="Semester attendance summary">
         <div className="overall-card">
           <div className="overall-card-copy">
             <div className="overline">OVERALL ATTENDANCE</div>
-            <div className="overall-number">{formatPercentage(totals.percentage)}<small>{totals.percentage === null ? "No data yet" : "this semester"}</small></div>
+            <div className="overall-number"><span className="attendance-percentage">{formatPercentage(totals.percentage)}{totals.percentage !== null && totals.percentage < overallTarget && <AttendanceWarning label={`Overall attendance is below the ${overallTarget}% minimum`} />}</span><small>{totals.percentage === null ? "No data yet" : "this semester"}</small></div>
             <div className="overall-card-meta"><span>{totals.attended} of {totals.conducted} periods attended</span></div>
           </div>
           <div className="target-caption"><b>{overallTarget}%</b>minimum overall target</div>
@@ -627,57 +588,18 @@ function OverviewView({
         <MetricCard icon="target" label="Need attention" value={String(missingCount)} foot={missingCount ? "Below subject target" : "No subjects below target"} urgent={missingCount > 0} />
       </section>
 
-      <section className="card today-classes-card">
-        <div className="card-heading"><div><h2>Today’s classes</h2><p>{formatDay(todayDate)} · From your saved weekly timetable</p></div><button className="text-link" onClick={() => onView("timetable")}>View timetable <Icon name="arrow"/></button></div>
-        {scheduledToday.length ? <>
-          <div className="today-class-list">{[...scheduleBySubject].map(([subjectId, hours]) => {
-            const subject = subjectById.get(subjectId)!;
-            const dayRecords = attendanceBySubject.get(subjectId) ?? [];
-            const conducted = dayRecords.reduce((sum, record) => sum + record.periods, 0);
-            const attended = dayRecords.reduce((sum, record) => sum + record.attended, 0);
-            const planned = hours.length;
-            const status = !dayRecords.length ? "Not recorded" : conducted < planned ? `${conducted}/${planned} logged · ${attended} attended` : attended === conducted ? "Present" : attended === 0 ? "Absent" : `${attended} of ${conducted} attended`;
-            const statusHealth = !dayRecords.length ? "empty" : conducted < planned ? "watch" : attended === conducted ? "safe" : attended === 0 ? "critical" : "watch";
-            return <div className="today-class-row" key={subjectId}>
-              <div className="today-class-subject"><span className="subject-color" style={{ backgroundColor: subject.color }}/><div><strong>{subject.name}</strong><span>{hourLabel(hours)}</span></div></div>
-              <StatusPill health={statusHealth} text={status}/>
-            </div>;
-          })}</div>
-          <div className="today-classes-actions"><span>{scheduledToday.length} {scheduledToday.length === 1 ? "period" : "periods"} scheduled today</span><button className="button button-primary" onClick={() => onMarkWholeDay(todayDate)}><Icon name="calendar"/>Mark whole day</button></div>
-        </> : <div className="today-classes-empty"><p>{weekday === 0 || weekday === 6 ? "No college periods are scheduled on weekends." : "No classes are listed for today yet. Fill in your weekly timetable to see your classes here."}</p>{weekday !== 0 && weekday !== 6 && <button className="button button-quiet" onClick={() => onView("timetable")}><Icon name="edit"/>Fill timetable</button>}</div>}
-      </section>
-
-      <section className="dashboard-grid" aria-label="Attendance trends and subjects">
-        <div className="card trend-card">
-          <div className="card-heading"><div><h2>Attendance trend</h2><p>Running overall percentage by class day</p></div><div className="chart-legend"><span className="legend-mark"/>Attendance</div></div>
-          <TrendChart records={records} target={overallTarget} />
-        </div>
-        <div className="card subject-watch-card">
-          <div className="card-heading"><div><h2>Subject check-in</h2><p>Lowest attendance first</p></div><button className="text-link" onClick={() => onView("subjects")}>All subjects <Icon name="arrow" /></button></div>
-          {sortedSubjects.length ? <div className="subject-list">
-            {sortedSubjects.slice(0, 4).map(({ subject, totals: subjectTotals }) => {
-              const subjectHealth = getHealth(subjectTotals.percentage, subject.requiredAttendance);
-              return <div className="subject-list-row" key={subject.id}>
-                <div className="subject-list-main"><span className="subject-color" style={{ backgroundColor: subject.color }}/><div className="subject-list-copy"><strong>{subject.name}</strong><span>{subject.code} · target {subject.requiredAttendance}%</span></div></div>
-                <div className="subject-list-value"><strong>{formatPercentage(subjectTotals.percentage)}</strong><StatusPill health={subjectHealth} /></div>
-              </div>;
-            })}
-          </div> : <EmptyState title="No subjects yet" copy="Add a subject to start seeing your attendance here." action={<button className="text-link" onClick={() => onView("subjects")}>Add a subject <Icon name="arrow" /></button>} />}
-        </div>
-      </section>
-
-      <section className="card recent-card">
-        <div className="card-heading"><div><h2>Recent classes</h2><p>Attendance, grouped by the day it happened</p></div><button className="text-link" onClick={() => onView("attendance")}>Full history <Icon name="arrow" /></button></div>
-        {recent.length ? recent.map((record) => {
-          const subject = subjectById.get(record.subjectId);
-          const status = getRecordStatus(record);
-          return <div className="recent-row" key={record.id}>
-            <div className="recent-date"><strong>{formatDate(record.date, { day: "numeric", month: "short" })}</strong>{formatDay(record.date).slice(0, 3)}</div>
-            <div className="recent-subject"><span className="subject-color" style={{ backgroundColor: subject?.color ?? "#a8b8b1" }}/><strong>{subject?.name ?? "Archived subject"}</strong></div>
-            <span className="recent-periods">{record.periods} {record.periods === 1 ? "period" : "periods"}</span>
-            <StatusPill health={status === "present" ? "safe" : status === "absent" ? "critical" : "watch"} text={status === "partial" ? `${record.attended}/${record.periods} attended` : status === "present" ? "Present" : "Absent"} />
-          </div>;
-        }) : <div className="recent-empty">No classes recorded yet. Add a subject, then log its first class.</div>}
+      <section className="card overview-subjects" aria-label="Subject attendance summary">
+        <div className="card-heading"><div><h2>Subject attendance</h2><p>Attendance percentage and class totals for each subject</p></div><button className="text-link" onClick={() => onView("subjects")}>All subjects <Icon name="arrow" /></button></div>
+        {subjects.length ? <div className="overview-subject-grid">{subjects.map((subject) => {
+          const subjectTotals = getSubjectTotals(records, subject.id);
+          const belowMinimum = subjectTotals.percentage !== null && subjectTotals.percentage < subject.requiredAttendance;
+          return <article className="overview-subject-card" key={subject.id}>
+            <div className="overview-subject-name"><h3>{subject.name}</h3>{subject.code && <p>{subject.code}</p>}</div>
+            <div className="overview-subject-percentage attendance-percentage">{formatPercentage(subjectTotals.percentage)}{belowMinimum && <AttendanceWarning label={`${subject.name} attendance is below the ${subject.requiredAttendance}% minimum`} />}</div>
+            <p className="overview-subject-target">{subjectTotals.percentage === null ? "No classes recorded" : `${subject.requiredAttendance}% minimum attendance`}</p>
+            <dl className="overview-subject-counts"><div><dt>Classes attended</dt><dd>{subjectTotals.attended}</dd></div><div><dt>Classes conducted</dt><dd>{subjectTotals.conducted}</dd></div></dl>
+          </article>;
+        })}</div> : <EmptyState title="No subjects yet" copy="Add a subject to start seeing your attendance here." action={<button className="text-link" onClick={() => onView("subjects")}>Add a subject <Icon name="arrow" /></button>} />}
       </section>
       <p className="overview-footnote"><Icon name="spark" />{health === "critical" ? `Your overall attendance is under ${overallTarget}%. Each attended class helps bring it back up.` : health === "watch" ? `You’re close to the ${overallTarget}% overall floor. Keep an eye on upcoming absences.` : health === "safe" ? `You’re above the ${overallTarget}% overall floor. Keep your rhythm steady.` : `Start by adding your subjects and recording today’s classes.`}<span className="overview-footnote-date">{labelDate}</span></p>
     </>
@@ -690,44 +612,6 @@ function MetricCard({ icon, label, value, foot, urgent = false }: { icon: IconNa
 
 function EmptyState({ title, copy, action }: { title: string; copy: string; action?: ReactNode }) {
   return <div className="empty-state"><div><strong>{title}</strong><p>{copy}</p>{action && <div style={{ marginTop: 12 }}>{action}</div>}</div></div>;
-}
-
-function TrendChart({ records, target }: { records: AttendanceRecord[]; target: number }) {
-  const perDay = new Map<string, { attended: number; conducted: number }>();
-  for (const record of records) {
-    const value = perDay.get(record.date) ?? { attended: 0, conducted: 0 };
-    value.attended += record.attended;
-    value.conducted += record.periods;
-    perDay.set(record.date, value);
-  }
-  const dates = [...perDay.keys()].sort();
-  let runningAttended = 0;
-  let runningConducted = 0;
-  const points = dates.map((date) => {
-    const day = perDay.get(date)!;
-    runningAttended += day.attended;
-    runningConducted += day.conducted;
-    return { date, value: (runningAttended / runningConducted) * 100 };
-  }).slice(-14);
-  if (!points.length) return <div className="chart-empty">Your trend will appear after you record a class.</div>;
-  const left = 57;
-  const right = 602;
-  const top = 34;
-  const bottom = 151;
-  const xFor = (index: number) => points.length === 1 ? (left + right) / 2 : left + (index / (points.length - 1)) * (right - left);
-  const yFor = (value: number) => bottom - ((Math.max(60, Math.min(100, value)) - 60) / 40) * (bottom - top);
-  const coords = points.map((point, index) => [xFor(index), yFor(point.value)] as const);
-  const linePath = coords.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ");
-  const areaPath = `${linePath} L${coords.at(-1)?.[0]},${bottom} L${coords[0]?.[0]},${bottom} Z`;
-  const targetY = yFor(target);
-  return <svg className="trend-chart" viewBox="0 0 620 184" role="img" aria-label={`Overall attendance trend. Current target ${target} percent.`}>
-    <defs><linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#76b89a" stopOpacity=".23"/><stop offset="100%" stopColor="#76b89a" stopOpacity="0"/></linearGradient></defs>
-    {[100, 80, 60].map((label) => <g key={label}><line x1={left} x2={right} y1={yFor(label)} y2={yFor(label)} className={label === target ? "chart-target-line" : "chart-grid-line"}/><text x="0" y={yFor(label) + 3} className="chart-label">{label}%</text></g>)}
-    {target !== 100 && target !== 80 && target !== 60 && <line x1={left} x2={right} y1={targetY} y2={targetY} className="chart-target-line"/>}
-    <path d={areaPath} className="chart-area"/><path d={linePath} className="chart-line"/>
-    {coords.map(([x, y], index) => <circle key={points[index].date} cx={x} cy={y} r={index === coords.length - 1 ? 4.3 : 2.2} className="chart-point"><title>{formatDate(points[index].date)}: {formatPercentage(points[index].value)}</title></circle>)}
-    {[0, Math.floor((points.length - 1) / 2), points.length - 1].filter((value, index, values) => values.indexOf(value) === index).map((index) => <text key={points[index].date} x={xFor(index)} y="176" textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} className="chart-label">{formatDate(points[index].date, { day: "numeric", month: "short" })}</text>)}
-  </svg>;
 }
 
 function SubjectsView({
