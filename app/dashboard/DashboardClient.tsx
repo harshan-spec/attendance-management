@@ -724,6 +724,7 @@ function CalendarView({ subjects, records, onAdd, onWholeDay }: { subjects: Subj
 
   return <div className="calendar-layout">
     <section className="card calendar-card">
+      <p className="calendar-reference-note">This calendar is for reference.</p>
       <div className="calendar-controls"><strong>{monthLabel}</strong><div className="calendar-arrow-row"><button className="icon-button" aria-label="Previous month" onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1, 12))}><Icon name="chevron-left"/></button><button className="icon-button" aria-label="Next month" onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1, 12))}><Icon name="chevron-right"/></button></div></div>
       <div className="calendar-weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="calendar-grid">{cells.map(({ date, dateString, inMonth }) => {
@@ -1278,7 +1279,6 @@ function AttendanceModal({
   const [periods, setPeriods] = useState(initialRecord?.periods ?? 1);
   const [status, setStatus] = useState<"present" | "absent" | "partial">(initialStatus);
   const [attended, setAttended] = useState(initialRecord?.attended ?? 1);
-  const [note, setNote] = useState(initialRecord?.note ?? "");
   const [error, setError] = useState("");
   const modalRef = useModalFocus(onClose);
 
@@ -1308,7 +1308,7 @@ function AttendanceModal({
       date,
       periods,
       attended: countAttended,
-      ...(note.trim() ? { note: note.trim() } : {}),
+      ...(initialRecord?.note ? { note: initialRecord.note } : {}),
     });
   }
 
@@ -1327,7 +1327,6 @@ function AttendanceModal({
           <label className="field-label">Attendance status<select value={status} onChange={(event) => changeStatus(event.target.value as "present" | "absent" | "partial")}><option value="present">Present</option><option value="absent">Absent</option><option value="partial">Partially attended</option></select></label>
         </div>
         {status === "partial" && <label className="field-label">Periods attended<input type="number" min="0" max={periods} value={attended} onChange={(event) => setAttended(Math.max(0, Math.min(periods, Number(event.target.value) || 0)))}/></label>}
-        <label className="field-label">Note <span className="optional-label">Optional</span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={140} placeholder="Room change, lab, or a short note"/></label>
         {date && <p className="modal-helper">This record will appear under <strong>{formatDay(date)}, {formatDate(date)}</strong>.</p>}
         {error && <p className="form-message form-error" role="alert">{error}</p>}
         <div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit"><Icon name="check"/>{initialRecord ? "Save changes" : "Save attendance"}</button></div>
