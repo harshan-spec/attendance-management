@@ -77,7 +77,7 @@ function isWorkspace(value: unknown): value is WorkspaceData {
   for (const subject of value.subjects) {
     if (!isObject(subject) || !isUuid(subject.id) || !isUuid(subject.semesterId) || !semesters.has(subject.semesterId) ||
         typeof subject.name !== "string" || subject.name.trim().length < 1 || subject.name.length > 80 ||
-        typeof subject.code !== "string" || subject.code.length > 20 || !Number.isInteger(subject.credits) || (subject.credits as number) < 1 || (subject.credits as number) > 10 ||
+        typeof subject.code !== "string" || subject.code.length > 20 ||
         typeof subject.requiredAttendance !== "number" || subject.requiredAttendance < 75 || subject.requiredAttendance > 100 ||
         typeof subject.color !== "string" || subject.color.length > 20 || typeof subject.archived !== "boolean" || subjects.has(subject.id)) return false;
     subjects.set(subject.id, subject.semesterId);
@@ -149,7 +149,7 @@ export async function GET() {
 
   const [semesterResult, subjectResult, recordResult, timetableResult, settingsResult] = await Promise.all([
     supabase.from("semesters").select("id,name,start_date,end_date,is_archived,is_active,academic_profile").order("start_date", { ascending: true }),
-    supabase.from("subjects").select("id,semester_id,name,code,credits,required_attendance,color,is_archived").order("name", { ascending: true }),
+    supabase.from("subjects").select("id,semester_id,name,code,required_attendance,color,is_archived").order("name", { ascending: true }),
     loadAttendanceRecords(supabase),
     supabase.from("timetable_entries").select("semester_id,subject_id,weekday,hour").order("weekday", { ascending: true }).order("hour", { ascending: true }),
     supabase.from("attendance_settings").select("overall_target,default_subject_target,theme").maybeSingle(),
@@ -177,7 +177,6 @@ export async function GET() {
       semesterId: subject.semester_id,
       name: subject.name,
       code: subject.code,
-      credits: subject.credits,
       requiredAttendance: Number(subject.required_attendance),
       color: subject.color,
       archived: subject.is_archived,

@@ -16,7 +16,6 @@ export interface Subject {
   semesterId: string;
   name: string;
   code: string;
-  credits: number;
   requiredAttendance: number;
   color: string;
   archived: boolean;

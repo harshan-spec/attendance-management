@@ -66,7 +66,13 @@ function loadPreviewWorkspace(userId: string): WorkspaceData {
     const saved = localStorage.getItem(`attendly-workspace:${userId}`);
     if (saved) {
       const parsed = JSON.parse(saved) as WorkspaceData;
-      return { ...parsed, timetable: Array.isArray(parsed.timetable) ? parsed.timetable : [] };
+      return {
+        ...parsed,
+        subjects: (Array.isArray(parsed.subjects) ? parsed.subjects : []).map(({ id, semesterId, name, code, requiredAttendance, color, archived }) => ({
+          id, semesterId, name, code, requiredAttendance, color, archived,
+        })),
+        timetable: Array.isArray(parsed.timetable) ? parsed.timetable : [],
+      };
     }
   } catch {
     try { localStorage.removeItem(`attendly-workspace:${userId}`); } catch { /* The sample workspace is still usable without browser storage. */ }
@@ -742,7 +748,7 @@ function SubjectsView({
       const health = getHealth(summary.percentage, subject.requiredAttendance);
       return <article className="card subject-card" key={subject.id}>
         <div className="subject-card-head">
-          <div className="subject-identity"><span className="subject-color" style={{ backgroundColor: subject.color }}/><div className="subject-name"><h3>{subject.name}</h3><p>{subject.code || "No subject code"} · {subject.credits} credits</p></div></div>
+          <div className="subject-identity"><span className="subject-color" style={{ backgroundColor: subject.color }}/><div className="subject-name"><h3>{subject.name}</h3><p>{subject.code || "No subject code"}</p></div></div>
           <div className="subject-card-actions">
             <button className="icon-button" aria-label={`Edit ${subject.name}`} onClick={() => onEdit(subject)}><Icon name="edit" /></button>
             <button className="icon-button" aria-label={subject.archived ? `Restore ${subject.name}` : `Archive ${subject.name}`} onClick={() => onArchive(subject)}><Icon name={subject.archived ? "refresh" : "archive"} /></button>
@@ -1482,7 +1488,6 @@ function SubjectModal({
 }) {
   const [name, setName] = useState(subject?.name ?? "");
   const [code, setCode] = useState(subject?.code ?? "");
-  const credits = subject?.credits ?? 3;
   const required = subject?.requiredAttendance ?? Math.max(75, defaultTarget);
   const color = subject?.color ?? subjectColors[0];
   const [error, setError] = useState("");
@@ -1496,7 +1501,6 @@ function SubjectModal({
       semesterId,
       name: name.trim(),
       code: code.trim(),
-      credits: Math.max(1, Math.min(10, credits || 1)),
       requiredAttendance: required,
       color,
       archived: subject?.archived ?? false,
