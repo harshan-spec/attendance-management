@@ -984,7 +984,6 @@ function TimetableView({
       <div className="college-timetable-heading">
         <div><span className="college-timetable-eyebrow">OFFICIAL SVCE TIMETABLE</span><h2>College timetable · original PDF</h2><p>{timetableProfile.department} · {getStudyYearLabel(collegeStudyYear)} · Semester {collegeSemester} · {timetableProfile.section} · {timetableProfile.academicYear}</p></div>
         <div className="college-timetable-actions">
-          {(collegePdf.sourceUrl || savedSourceUrl) && <a className="button button-quiet" href={collegePdf.sourceUrl || savedSourceUrl || undefined} target="_blank" rel="noreferrer">Source PDF <Icon name="external"/></a>}
           <button className="button button-quiet" onClick={() => {
             const id = refreshSequence.current + 1;
             refreshSequence.current = id;
