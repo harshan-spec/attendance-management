@@ -1314,7 +1314,7 @@ function AttendanceModal({
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="modal" ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title">
-      <div className="modal-header"><div><h2 id="attendance-modal-title">{initialRecord ? "Edit class record" : "Log attendance"}</h2><p>Save the class against its date and subject.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
+      <div className="modal-header"><div><h2 id="attendance-modal-title">{initialRecord ? "Edit class record" : "Mark single subject"}</h2><p>Save the class against its date and subject.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Subject
           <select required value={subjectId} onChange={(event) => setSubjectId(event.target.value)}>
