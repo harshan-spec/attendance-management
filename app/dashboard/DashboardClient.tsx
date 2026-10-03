@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAttendlyAuth } from "@/lib/auth-context";
-import { afterAttending, afterMissing, classesNeeded, classesThatCanBeMissed, classesToAttendWithinUpcoming, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals, localDate } from "@/lib/attendance";
+import { afterAttending, afterMissing, classesNeeded, classesToAttendWithinUpcoming, dateKey, formatDate, formatDay, formatPercentage, getHealth, getRecordStatus, getSubjectTotals, getTotals, localDate } from "@/lib/attendance";
 import { createSampleWorkspace } from "@/lib/sample-data";
 import type { AttendanceRecord, Semester, Subject, TimetableEntry, WorkspaceData, WorkspaceSettings } from "@/lib/types";
 import { getStudyYearLabel, SVCE_FALLBACK_OPTIONS, type CollegeSelectOption, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
@@ -1072,22 +1072,12 @@ function PlannerView({ subjects, records, overallTarget }: {
   const missAllScenario = futureClasses === null ? null : afterMissing(current, futureClasses);
   const neededInWindow = futureClasses === null ? null : classesToAttendWithinUpcoming(current, target, futureClasses);
   const consecutiveNeeded = classesNeeded(current, target);
-  const safeAbsences = classesThatCanBeMissed(current, target);
   const plannedProjection = futureClasses !== null && plannedAttendances !== null && current.conducted + futureClasses > 0
     ? ((current.attended + Math.min(plannedAttendances, futureClasses)) / (current.conducted + futureClasses)) * 100
     : null;
-  const overallAttendAll = futureClasses === null ? null : afterAttending(overallCurrent, futureClasses);
-  const overallMissAll = futureClasses === null ? null : afterMissing(overallCurrent, futureClasses);
   const overallPlanned = futureClasses !== null && plannedAttendances !== null && overallCurrent.conducted + futureClasses > 0
     ? ((overallCurrent.attended + Math.min(plannedAttendances, futureClasses)) / (overallCurrent.conducted + futureClasses)) * 100
     : null;
-  const overallNeededInWindow = futureClasses === null ? null : classesToAttendWithinUpcoming(overallCurrent, effectiveOverallTarget, futureClasses);
-  const neededForBoth = neededInWindow === null || overallNeededInWindow === null ? null : Math.max(neededInWindow, overallNeededInWindow);
-  const jointTargetDescription = futureClasses === null || futureClasses === 0
-    ? "Enter upcoming periods to check both attendance requirements."
-    : neededForBoth === null || neededForBoth > futureClasses
-      ? `Attending all ${futureClasses} cannot meet both targets in this window. More attended periods are needed.`
-      : `Attend at least ${neededForBoth} of ${futureClasses} to meet both targets; up to ${futureClasses - neededForBoth} can be missed.`;
 
   function updateForecast(update: Partial<PlannerForecast>) {
     if (scope === "overall") {
@@ -1140,16 +1130,6 @@ function PlannerView({ subjects, records, overallTarget }: {
           : neededInWindow === 0
             ? `You can miss all ${futureClasses} and remain at or above ${target}%.`
             : `Attend at least ${neededInWindow} of these ${futureClasses}; the remaining ${futureClasses - neededInWindow} can be missed.`;
-  const safeAbsencesValue = current.percentage !== null && current.percentage < target
-    ? "0 for now"
-    : safeAbsences === null ? "No limit" : `${safeAbsences} classes`;
-  const safeAbsencesDescription = current.percentage !== null && current.percentage < target
-    ? consecutiveNeeded === null
-      ? `A ${target}% target cannot be restored after a previous absence.`
-      : futureClasses === null
-        ? `No absences are safe now. Attend ${consecutiveNeeded} consecutive classes to recover; enter a forecast to plan the full window.`
-        : `No absences are safe now. Attend ${consecutiveNeeded} consecutively; the target card accounts for all ${futureClasses} upcoming periods.`
-    : "Maximum consecutive absences from your current totals while staying on or above the target.";
 
   return <div className="planner-grid">
     <section className="card planner-controls">
@@ -1185,14 +1165,11 @@ function PlannerView({ subjects, records, overallTarget }: {
       <div className="card planner-result"><div className="overline">{futureClasses === null ? "ATTEND ALL UPCOMING" : `ATTEND ALL ${futureClasses}`}</div><strong>{futureClasses === null ? "—" : futureClasses === 0 ? "No periods" : formatPercentage(attendAllScenario)}</strong><p>{futureClasses === null ? "Enter a period count for this forecast." : scope === "overall" ? "Projected overall attendance if you attend every upcoming period." : `Projected ${selectedSubject?.name} attendance if you attend every upcoming period.`}</p></div>
       <div className="card planner-result"><div className="overline">{futureClasses === null ? "MISS ALL UPCOMING" : `MISS ALL ${futureClasses}`}</div><strong>{futureClasses === null ? "—" : futureClasses === 0 ? "No periods" : formatPercentage(missAllScenario)}</strong><p>{futureClasses === null ? "Enter a period count for this forecast." : scope === "overall" ? "Projected overall attendance if you miss every upcoming period." : `Projected ${selectedSubject?.name} attendance if you miss every upcoming period.`}</p></div>
       <div className="card planner-result"><div className="overline">ATTEND TO MEET {targetName.toUpperCase()}</div><strong>{neededValue}</strong><p>{neededDescription}</p></div>
-      <div className="card planner-result"><div className="overline">SAFE ABSENCES AT {target}%</div><strong>{safeAbsencesValue}</strong><p>{safeAbsencesDescription}</p></div>
       <div className="card planner-result"><div className="overline">YOUR PLANNED OUTCOME</div><strong>{futureClasses === null ? "Enter periods" : plannedAttendances === null ? "Set your plan" : `${Math.min(plannedAttendances, futureClasses)} of ${futureClasses}`}</strong><p>{plannedProjection === null ? "Set both counts to see the projected attendance for your plan." : `${formatPercentage(plannedProjection)} after attending ${Math.min(plannedAttendances ?? 0, futureClasses ?? 0)} and missing ${(futureClasses ?? 0) - Math.min(plannedAttendances ?? 0, futureClasses ?? 0)} periods.`}</p></div>
       {scope === "subject" && <div className="card planner-result" aria-label="Overall impact of the subject plan">
         <div className="overline">OVERALL IMPACT · {effectiveOverallTarget}% TARGET</div>
-        <strong>{formatPercentage(overallPlanned ?? overallAttendAll)}</strong>
-        <p>{futureClasses === null ? "Enter a count to see how this subject changes your overall attendance." : `Attend all: ${formatPercentage(overallAttendAll)}. Miss all: ${formatPercentage(overallMissAll)}.${overallPlanned === null ? "" : ` Your plan: ${formatPercentage(overallPlanned)}.`}`}</p>
-        <p>{jointTargetDescription}</p>
-        <p>Only {selectedSubject?.name}’s upcoming periods are added. Other subjects keep their current totals.</p>
+        <strong>{formatPercentage(overallPlanned)}</strong>
+        {overallPlanned === null && <p>Enter upcoming periods and your planned attendance to see the overall percentage.</p>}
       </div>}
     </div>}
   </div>;
