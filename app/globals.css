@@ -432,8 +432,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .planner-upcoming-field small { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .planner-rule-note { margin: 13px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .planner-rule-note strong { color: var(--ink); }
-.planner-results { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
-.planner-result { padding: 18px; }
+.planner-results { display: flex; flex-wrap: wrap; gap: 12px; }
+.planner-result { flex: 1 1 calc((100% - 24px) / 3); min-width: 0; padding: 18px; }
 .planner-result .overline { color: var(--muted); }
 .planner-result strong { display: block; margin-top: 7px; color: var(--ink); font-size: 27px; font-weight: 620; letter-spacing: -.05em; }
 .planner-result p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
@@ -585,7 +585,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .dashboard-grid { grid-template-columns: 1fr; }
   .subject-watch-card { min-height: auto; }
   .calendar-layout, .planner-grid, .settings-layout { grid-template-columns: 1fr; }
-  .planner-results { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .planner-result { flex-basis: calc((100% - 12px) / 2); }
   .planner-control-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .planner-current { grid-column: 1 / -1; }
   .subject-grid { grid-template-columns: 1fr; }
@@ -598,7 +598,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .auth-form-wrap { padding: 45px 0 35px; }
   .auth-footnote { font-size: 10px; }
   .auth-legal-links { flex-basis: 100%; justify-content: flex-start; }
-  .planner-results { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .planner-result { flex-basis: calc((100% - 12px) / 2); }
   .signup-profile-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .college-timetable-heading { align-items: stretch; flex-direction: column; gap: 10px; }
   .college-timetable-heading .button { align-self: flex-start; }
@@ -690,6 +690,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .subject-percentage { font-size: 25px; }
   .form-two-col, .calculator-inputs { grid-template-columns: 1fr; }
   .planner-results, .planner-control-row { grid-template-columns: 1fr; }
+  .planner-result { flex-basis: 100%; }
   .planner-current { grid-column: auto; }
   .calculator-header nav a:first-child { display: none; }
   .calculator-result { align-items: flex-start; padding: 15px; }
