@@ -136,7 +136,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
         };
         const needsConfirmation = await signUp(name.trim(), email, password, academicProfile);
         if (needsConfirmation) {
-          setSuccess("Check your inbox and verify your email. The secure link will open your Attendly workspace.");
+          setSuccess("Click the verification link sent to your email to verify your account and open your Attendly workspace.");
         } else {
           router.push("/dashboard");
         }

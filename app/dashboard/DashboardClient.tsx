@@ -454,7 +454,7 @@ export function DashboardClient() {
         <header className="topbar">
           <div className="topbar-left"><span className="topbar-title">Attendly</span><span className="topbar-period"><Icon name="calendar" />{activeSemester?.name ?? "No semester"}</span>{!user.isPreview && <button type="button" className={`sync-indicator ${saveStatus}`} onClick={saveStatus === "error" ? retryWorkspaceSave : undefined} aria-live="polite" title={saveStatus === "error" ? "Retry syncing changes" : undefined}><span className="status-dot"/><span className="sync-indicator-label">{saveStatus === "saving" ? "Saving" : saveStatus === "error" ? "Retry sync" : "Saved"}</span></button>}</div>
           <div className="topbar-actions">
-            <button className="button button-quiet topbar-log-button" onClick={() => openAttendance()}><Icon name="plus" /><span className="topbar-log-label">Log attendance</span></button>
+            {view !== "overview" && <button className="button button-quiet topbar-log-button" onClick={() => openAttendance()}><Icon name="plus" /><span className="topbar-log-label">Log attendance</span></button>}
             <div className="account-menu-anchor">
               <button className="button button-quiet account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-label="Open account menu"><span className="avatar topbar-avatar">{initials(user.name)}</span><span className="account-trigger-name">{user.name.split(" ")[0]}</span><Icon name="more" /></button>
               {accountMenuOpen && <div className="account-menu">
@@ -475,7 +475,11 @@ export function DashboardClient() {
             </div>
             <div className="heading-actions">
               {view === "subjects" && <button className="button button-primary" onClick={() => setDialog({ kind: "subject" })}><Icon name="plus" />Add subject</button>}
-              {(view === "overview" || view === "attendance" || view === "calendar") && <button className="button button-primary" onClick={() => openAttendance()}><Icon name="plus" /><span>Log attendance</span></button>}
+              {view === "overview" && <>
+                <button className="button button-quiet" onClick={() => openWholeDayAttendance()} aria-label="Mark whole day" title="Mark whole day"><Icon name="calendar"/><span>Mark whole day</span></button>
+                <button className="button button-primary" onClick={() => openAttendance()} aria-label="Mark single subject" title="Mark single subject"><Icon name="plus"/><span>Mark single subject</span></button>
+              </>}
+              {(view === "attendance" || view === "calendar") && <button className="button button-primary" onClick={() => openAttendance()}><Icon name="plus" /><span>Log attendance</span></button>}
               {view === "reports" && <button className="button button-quiet" onClick={exportCsv}><Icon name="download" />Export CSV</button>}
               {view === "semesters" && <button className="button button-primary" onClick={() => setDialog({ kind: "semester" })}><Icon name="plus" />New semester</button>}
             </div>
