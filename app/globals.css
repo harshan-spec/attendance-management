@@ -828,6 +828,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Overview subject summaries adapt to the available panel width. */
 .overview-subjects { margin-top: 15px; padding: 20px; }
+.attendance-low-notice { display: flex; align-items: flex-start; gap: 11px; margin-top: 14px; padding: 13px 15px; border: 1px solid #efd9b5; border-radius: 11px; color: var(--ink); background: #fff8ed; }
+.attendance-low-notice > svg { width: 18px; height: 18px; flex: 0 0 18px; margin-top: 1px; color: #a16615; }
+.attendance-low-notice strong { display: block; font-size: 12px; font-weight: 700; }
+.attendance-low-notice p { margin: 3px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.app-shell[data-theme="dark"] .attendance-low-notice { border-color: #594a34; background: #342f27; }
+.app-shell[data-theme="dark"] .attendance-low-notice > svg { color: #ffd28a; }
 .overview-subject-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; margin-top: 20px; }
 .overview-subject-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; }
 .overview-subject-name h3 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }

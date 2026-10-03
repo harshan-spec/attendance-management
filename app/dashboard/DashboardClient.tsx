@@ -571,6 +571,7 @@ function OverviewView({ todayLabel, subjects, records, totals, overallTarget, mi
   onView: (view: ViewKey) => void;
 }) {
   const health = getHealth(totals.percentage, overallTarget);
+  const overallBelowMinimum = totals.percentage !== null && totals.percentage < overallTarget;
   const labelDate = todayLabel.split(",").slice(1).join(",").trim();
   return (
     <>
@@ -587,6 +588,15 @@ function OverviewView({ todayLabel, subjects, records, totals, overallTarget, mi
         <MetricCard icon="book" label="Subjects" value={String(subjects.length)} foot={subjects.length ? "In this semester" : "Add your first subject"} />
         <MetricCard icon="target" label="Need attention" value={String(missingCount)} foot={missingCount ? "Below subject target" : "No subjects below target"} urgent={missingCount > 0} />
       </section>
+
+      {(overallBelowMinimum || missingCount > 0) && <div className="attendance-low-notice" role="status">
+        <Icon name="alert" />
+        <div><strong>Attendance is low</strong><p>{[
+          overallBelowMinimum ? `Overall attendance is ${formatPercentage(totals.percentage)}, below the ${overallTarget}% minimum.` : "",
+          missingCount > 0 ? `${missingCount} ${missingCount === 1 ? "subject is" : "subjects are"} below the minimum attendance.` : "",
+          "Attend upcoming classes to improve your standing.",
+        ].filter(Boolean).join(" ")}</p></div>
+      </div>}
 
       <section className="card overview-subjects" aria-label="Subject attendance summary">
         <div className="card-heading"><div><h2>Subject attendance</h2><p>Attendance percentage and class totals for each subject</p></div><button className="text-link" onClick={() => onView("subjects")}>All subjects <Icon name="arrow" /></button></div>
