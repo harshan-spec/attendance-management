@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useAttendlyAuth } from "@/lib/auth-context";
 import { SVCE_FALLBACK_OPTIONS, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
 import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
+import { safeLoginRedirect } from "@/lib/auth-redirect";
 
 type AuthMode = "login" | "signup" | "forgot" | "update";
 
@@ -68,8 +69,9 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   }, [mode, supabaseConfigured]);
 
   useEffect(() => {
-    if (mode === "forgot" && new URLSearchParams(window.location.search).get("error") === "verification") {
-      setError("That recovery link could not be verified. Request a fresh email link and open it in this browser.");
+    if (new URLSearchParams(window.location.search).get("error") === "verification") {
+      if (mode === "forgot") setError("That recovery link could not be verified. Request a fresh email link and open it in this browser.");
+      if (mode === "login") setError("That email confirmation link is invalid or expired. Open the latest verification email, or try signing in if your email is already verified.");
     }
   }, [mode]);
 
@@ -143,7 +145,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
       } else if (mode === "login") {
         await signIn(email, password);
         const requestedPath = new URLSearchParams(window.location.search).get("next");
-        const next = requestedPath?.startsWith("/") && !requestedPath.startsWith("//") ? requestedPath : "/dashboard";
+        const next = safeLoginRedirect(requestedPath, window.location.origin);
         router.push(next);
       } else if (mode === "update") {
         if (!recoveryVerified) {

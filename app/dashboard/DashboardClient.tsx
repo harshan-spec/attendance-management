@@ -94,6 +94,7 @@ export function DashboardClient() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [toast, setToast] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveRevisionRef = useRef(0);
@@ -145,7 +146,7 @@ export function DashboardClient() {
   }, [ready, userId, userIsPreview, router, loadAttempt, enterPreview]);
 
   useEffect(() => {
-    if (!userId || !data || loadedUserId !== userId) return;
+    if (!userId || !data || loadedUserId !== userId || signingOut) return;
     if (userIsPreview) {
       try {
         localStorage.setItem(`attendly-workspace:${userId}`, JSON.stringify(data));
@@ -169,6 +170,7 @@ export function DashboardClient() {
         setSaveStatus("saving");
         const response = await fetch("/api/workspace", {
           method: "PUT",
+          signal: AbortSignal.timeout(15_000),
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workspace: data }),
         });
@@ -185,7 +187,7 @@ export function DashboardClient() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [userId, userIsPreview, data, loadedUserId]);
+  }, [userId, userIsPreview, data, loadedUserId, signingOut]);
 
   useEffect(() => {
     if (!toast) return;
@@ -393,11 +395,31 @@ export function DashboardClient() {
     notify("Your semester report downloaded as CSV.");
   }
   async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    saveRevisionRef.current += 1;
     try {
+      await saveQueueRef.current;
+      if (data && loadedUserId === userId && !userIsPreview) {
+        const serialized = JSON.stringify(data);
+        if (lastSavedWorkspaceRef.current.userId !== userId || lastSavedWorkspaceRef.current.serialized !== serialized) {
+          const response = await fetch("/api/workspace", {
+            method: "PUT",
+            signal: AbortSignal.timeout(15_000),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workspace: data }),
+          });
+          if (!response.ok) throw new Error("Your latest changes could not be saved. Please retry before signing out.");
+          lastSavedWorkspaceRef.current = { userId, serialized };
+          setSaveStatus("saved");
+        }
+      }
       await signOut();
       router.push("/login");
     } catch (caught) {
       notify(caught instanceof Error ? caught.message : "Could not sign out. Please try again.");
+    } finally {
+      setSigningOut(false);
     }
   }
   async function handleAccountDeletion(password: string) {
@@ -407,6 +429,9 @@ export function DashboardClient() {
     router.replace("/login");
   }
 
+  if (signingOut) {
+    return <main className="auth-loading"><div className="loading-mark"><Icon name="check" /></div><p>Saving your changes before signing out…</p></main>;
+  }
   if (!ready || !user) {
     return <main className="auth-loading"><div className="loading-mark"><Icon name="check" /></div><p>Opening your attendance space…</p></main>;
   }
@@ -849,7 +874,12 @@ function TimetableView({
       }
       const response = await fetch(`/api/svce-timetable?${params.toString()}`, { signal: controller.signal, cache: "no-store" });
       if (!response.ok || !response.headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
-        throw new Error("The matching college timetable could not be fetched. Your editable weekday timetable is still available below.");
+        const result = response.headers.get("content-type")?.toLowerCase().includes("application/json")
+          ? await response.json() as { message?: string }
+          : null;
+        throw new Error(typeof result?.message === "string" && result.message
+          ? result.message
+          : "The matching college timetable could not be fetched. Your editable weekday timetable is still available below.");
       }
 
       const pdfBytes = await response.arrayBuffer();
