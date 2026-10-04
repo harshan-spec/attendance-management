@@ -329,7 +329,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .empty-state { display: grid; place-items: center; min-height: 200px; padding: 24px; color: var(--muted); text-align: center; }
 .empty-state strong { display: block; margin: 0 0 6px; color: var(--ink); font-size: 14px; }
 .empty-state p { margin: 0; font-size: 12px; }
-.calendar-layout { display: grid; grid-template-columns: minmax(0,1.25fr) minmax(260px,.75fr); gap: 14px; }
+.calendar-layout { display: grid; grid-template-columns: minmax(0,1.25fr) minmax(260px,.75fr); align-items: start; gap: 14px; }
 .calendar-card { padding: 19px; }
 .calendar-reference-note { margin: 0 0 14px; padding: 9px 11px; border-radius: 8px; color: var(--muted); background: var(--panel-soft); font-size: 11px; line-height: 1.4; }
 .calendar-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
