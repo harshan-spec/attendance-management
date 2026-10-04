@@ -578,6 +578,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .legal-page-links a:hover { color: #285b4c; text-decoration: underline; text-underline-offset: 3px; }
 
 /* Responsive layout */
+@media (min-width: 761px) and (max-height: 800px) {
+  .sidebar { padding: 18px 14px 12px; }
+  .sidebar .brand { margin-bottom: 18px; }
+  .sidebar-label { margin-bottom: 8px; }
+  .side-nav { gap: 3px; }
+  .side-link { min-height: 37px; }
+  .side-spacer { min-height: 8px; }
+  .sidebar-semester { margin: 8px 3px 10px; padding: 10px; }
+  .preview-status { margin-bottom: 10px; padding: 8px 9px; }
+  .sidebar-profile { padding-top: 9px; }
+}
+@media (min-width: 761px) and (max-height: 640px) {
+  .sidebar { overflow-y: auto; scrollbar-width: none; }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .side-link { min-height: 32px; }
+  .side-spacer { min-height: 0; }
+}
 @media (max-width: 1180px) {
   .sidebar { width: 224px; flex-basis: 224px; }
   .metric-grid { grid-template-columns: 1.65fr repeat(3, .8fr); gap: 10px; }
