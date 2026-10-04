@@ -12,8 +12,8 @@ const supportEmail = "attendly.noreply123@gmail.com";
 export default function ContactPage() {
   return <LegalPage title="Contact Attendly" summary="For account and product support, use the contact details below.">
     <LegalSection title="Support">
-      <p>Email us at <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.</p>
-      <p>Click the email address to compose a message to Attendly admin in your email app.</p>
+      <p>Email us at <a href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supportEmail)}`} target="_blank" rel="noopener noreferrer">{supportEmail}</a>.</p>
+      <p>Click the email address to compose a message to Attendly admin in Gmail. Gmail opens in a new tab.</p>
     </LegalSection>
   </LegalPage>;
 }
