@@ -41,6 +41,10 @@ export function AttendanceCalculator() {
       <div className="eyebrow">FREE ATTENDANCE TOOL</div>
       <h1>Attendance percentage calculator</h1>
       <p className="calculator-intro">Find your attendance from the periods you’ve attended and the periods your subject has conducted. The result updates as you enter your numbers.</p>
+      <section className="calculator-signin" aria-label="Sign in to Attendly">
+        <div><strong>Sign in to track your attendance</strong><p>Save your class records and access subject reports, your timetable, and the planner.</p></div>
+        <Link href="/login" className="button button-primary">Sign in <Icon name="external"/></Link>
+      </section>
       <section className="card calculator-card" aria-label="Attendance calculator">
         <div className="calculator-inputs">
           <label className="field-label">Periods attended<input type="number" inputMode="numeric" min="0" step="1" value={attendedText} onChange={(event) => setAttendedText(event.target.value)} aria-describedby="period-error"/></label>

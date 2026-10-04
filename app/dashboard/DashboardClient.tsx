@@ -91,6 +91,7 @@ export function DashboardClient() {
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [saveStatus, setSaveStatus] = useState<"local" | "saving" | "saved" | "error">("saved");
   const [view, setView] = useState<ViewKey>("overview");
+  const [reportSubjectId, setReportSubjectId] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [toast, setToast] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -204,6 +205,7 @@ export function DashboardClient() {
     [data?.subjects, activeSemester?.id],
   );
   const currentSubjects = semesterSubjects.filter((subject) => !subject.archived);
+  const selectedReportSubjectId = currentSubjects.some((subject) => subject.id === reportSubjectId) ? reportSubjectId : "";
   const currentSubjectIds = new Set(currentSubjects.map((subject) => subject.id));
   const semesterSubjectIds = new Set(semesterSubjects.map((subject) => subject.id));
   const activeRecords = (data?.records ?? []).filter((record) => currentSubjectIds.has(record.subjectId));
@@ -375,10 +377,10 @@ export function DashboardClient() {
     }));
     notify("Your weekly timetable was updated.");
   }
-  function exportCsv() {
+  function exportCsv(subjectId = "") {
     if (!data || !activeSemester) return;
     const rows = [["date", "day", "subject", "subject_code", "periods", "attended", "status"]];
-    for (const record of [...semesterRecords].sort((a, b) => a.date.localeCompare(b.date))) {
+    for (const record of activeRecords.filter((record) => !subjectId || record.subjectId === subjectId).sort((a, b) => a.date.localeCompare(b.date))) {
       const subject = semesterSubjects.find((entry) => entry.id === record.subjectId);
       rows.push([record.date, formatDay(record.date), subject?.name ?? "", subject?.code ?? "", String(record.periods), String(record.attended), getRecordStatus(record)]);
     }
@@ -389,7 +391,8 @@ export function DashboardClient() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${activeSemester.name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}-attendance.csv`;
+    const reportName = subjectId ? `${activeSemester.name}-${currentSubjects.find((subject) => subject.id === subjectId)?.name ?? "subject"}` : activeSemester.name;
+    link.download = `${reportName.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}-attendance.csv`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     notify("Your semester report downloaded as CSV.");
@@ -505,7 +508,7 @@ export function DashboardClient() {
                 <button className="button button-primary" onClick={() => openAttendance()} aria-label="Mark single subject" title="Mark single subject"><Icon name="plus"/><span>Mark single subject</span></button>
               </>}
               {(view === "attendance" || view === "calendar") && <button className="button button-primary" onClick={() => openAttendance()}><Icon name="plus" /><span>Log attendance</span></button>}
-              {view === "reports" && <button className="button button-quiet" onClick={exportCsv}><Icon name="download" />Export CSV</button>}
+              {view === "reports" && <button className="button button-quiet" onClick={() => exportCsv(selectedReportSubjectId)}><Icon name="download" />Export CSV</button>}
               {view === "semesters" && <button className="button button-primary" onClick={() => setDialog({ kind: "semester" })}><Icon name="plus" />New semester</button>}
             </div>
           </div>
@@ -516,7 +519,7 @@ export function DashboardClient() {
           {view === "calendar" && <CalendarView subjects={semesterSubjects} records={semesterRecords} onAdd={(date) => openAttendance(undefined, date)} onWholeDay={openWholeDayAttendance} />}
           {view === "timetable" && activeSemester && <TimetableView semesterId={activeSemester.id} semesterName={activeSemester.name} academicProfile={user.academicProfile} semesterAcademicProfile={activeSemester.academicProfile} subjects={semesterSubjects} timetable={data.timetable} onSave={saveTimetable} onAddSubject={() => setDialog({ kind: "subject" })} />}
           {view === "planner" && <PlannerView subjects={currentSubjects} records={activeRecords} overallTarget={data.settings.overallTarget} />}
-          {view === "reports" && <ReportsView subjects={currentSubjects} records={activeRecords} totals={totals} target={data.settings.overallTarget} onExport={exportCsv} />}
+          {view === "reports" && <ReportsView subjects={currentSubjects} records={activeRecords} totals={totals} target={data.settings.overallTarget} subjectId={selectedReportSubjectId} onSubjectChange={setReportSubjectId} onExport={() => exportCsv(selectedReportSubjectId)} />}
           {view === "semesters" && <SemestersView semesters={data.semesters} activeSemesterId={activeSemester?.id ?? ""} onActivate={setActiveSemester} onArchive={(semester) => setDialog({ kind: "archive-semester", semester })} onCreate={() => setDialog({ kind: "semester" })} />}
           {view === "settings" && <SettingsView settings={data.settings} preview={user.isPreview} onSave={saveSettings} onDeleteAccount={() => setDialog({ kind: "delete-account" })} />}
         </main>
@@ -1175,27 +1178,38 @@ function PlannerView({ subjects, records, overallTarget }: {
   </div>;
 }
 
-function ReportsView({ subjects, records, totals, target, onExport }: { subjects: Subject[]; records: AttendanceRecord[]; totals: ReturnType<typeof getTotals>; target: number; onExport: () => void }) {
+function ReportsView({ subjects, records, totals, target, subjectId, onSubjectChange, onExport }: { subjects: Subject[]; records: AttendanceRecord[]; totals: ReturnType<typeof getTotals>; target: number; subjectId: string; onSubjectChange: (id: string) => void; onExport: () => void }) {
+  const selectedSubject = subjects.find((subject) => subject.id === subjectId);
+  const reportSubjects = selectedSubject ? [selectedSubject] : subjects;
+  const reportTotals = selectedSubject ? getSubjectTotals(records, selectedSubject.id) : totals;
+  const reportTarget = selectedSubject ? Math.max(75, selectedSubject.requiredAttendance) : Math.max(80, target);
   const belowTarget = subjects.filter((subject) => {
     const summary = getSubjectTotals(records, subject.id);
     return summary.percentage !== null && summary.percentage < subject.requiredAttendance;
   }).length;
   return <>
+    <section className="card report-controls">
+      <label className="field-label">Report for<select value={subjectId} onChange={(event) => onSubjectChange(event.target.value)}><option value="">Overall attendance · all subjects</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}{subject.code ? ` · ${subject.code}` : ""}</option>)}</select></label>
+    </section>
     <div className="report-summary">
-      <div className="card report-summary-card"><span>Overall attendance</span><strong>{formatPercentage(totals.percentage)}</strong></div>
-      <div className="card report-summary-card"><span>Periods attended</span><strong>{totals.attended} <small>/ {totals.conducted}</small></strong></div>
-      <div className="card report-summary-card"><span>Subjects under target</span><strong>{belowTarget} <small>/ {subjects.length}</small></strong></div>
+      <div className="card report-summary-card"><span>{selectedSubject ? `${selectedSubject.name} attendance` : "Overall attendance"}</span><strong>{formatPercentage(reportTotals.percentage)}</strong></div>
+      <div className="card report-summary-card"><span>Periods attended</span><strong>{reportTotals.attended} <small>/ {reportTotals.conducted}</small></strong></div>
+      <div className="card report-summary-card"><span>{selectedSubject ? "Required attendance" : "Subjects under target"}</span><strong>{selectedSubject ? `${reportTarget}%` : belowTarget}{!selectedSubject && <small> / {subjects.length}</small>}</strong></div>
     </div>
     <section className="card report-card">
-      <div className="report-heading"><div><h2>Subject summary</h2><p>Calculated from all date-wise class records</p></div><button className="button button-quiet" onClick={onExport}><Icon name="download"/>Download CSV</button></div>
+      <div className="report-heading"><div><h2>{selectedSubject ? `${selectedSubject.name} report` : "Subject summary"}</h2><p>Calculated from all date-wise class records</p></div><button className="button button-quiet" onClick={onExport}><Icon name="download"/>Download CSV</button></div>
       {subjects.length ? <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Subject</th><th>Attended</th><th>Conducted</th><th>Attendance</th><th>Required</th><th>Standing</th></tr></thead><tbody>
-        {subjects.map((subject) => {
+        {reportSubjects.map((subject) => {
           const summary = getSubjectTotals(records, subject.id);
           const health = getHealth(summary.percentage, subject.requiredAttendance);
           return <tr key={subject.id}><td><span className="report-subject"><span className="subject-color" style={{ backgroundColor: subject.color }}/>{subject.name}</span></td><td>{summary.attended}</td><td>{summary.conducted}</td><td><strong>{formatPercentage(summary.percentage)}</strong></td><td>{subject.requiredAttendance}%</td><td><StatusPill health={health}/></td></tr>;
         })}
-      </tbody><tfoot><tr><td><strong>Overall · weighted</strong></td><td><strong>{totals.attended}</strong></td><td><strong>{totals.conducted}</strong></td><td><strong>{formatPercentage(totals.percentage)}</strong></td><td>{target}%</td><td><StatusPill health={getHealth(totals.percentage, target)}/></td></tr></tfoot></table></div> : <EmptyState title="Nothing to report yet" copy="Add subjects and class records to build your semester report."/>}
+      </tbody>{!selectedSubject && <tfoot><tr><td><strong>Overall · weighted</strong></td><td><strong>{totals.attended}</strong></td><td><strong>{totals.conducted}</strong></td><td><strong>{formatPercentage(totals.percentage)}</strong></td><td>{target}%</td><td><StatusPill health={getHealth(totals.percentage, target)}/></td></tr></tfoot>}</table></div> : <EmptyState title="Nothing to report yet" copy="Add subjects and class records to build your semester report."/>}
     </section>
+    {selectedSubject && <section className="card report-card report-history">
+      <div className="report-heading"><div><h2>Date-wise attendance</h2><p>Class records for {selectedSubject.name}</p></div></div>
+      {records.some((record) => record.subjectId === selectedSubject.id) ? <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Date</th><th>Day</th><th>Attended</th><th>Conducted</th><th>Status</th></tr></thead><tbody>{records.filter((record) => record.subjectId === selectedSubject.id).sort((a, b) => b.date.localeCompare(a.date)).map((record) => <tr key={record.id}><td>{formatDate(record.date)}</td><td>{formatDay(record.date)}</td><td>{record.attended}</td><td>{record.periods}</td><td>{getRecordStatus(record)}</td></tr>)}</tbody></table></div> : <EmptyState title="No class records yet" copy="Mark attendance for this subject to see its date-wise report."/>}
+    </section>}
     <section className="report-note"><Icon name="target"/><p>Overall attendance is calculated as total periods attended divided by total periods conducted. Subject percentages are shown individually and are not averaged to make the overall figure.</p></section>
   </>;
 }
