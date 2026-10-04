@@ -12,6 +12,7 @@ import { readCachedCollegeTimetable, writeCachedCollegeTimetable } from "@/lib/c
 import { createId } from "@/lib/id";
 import { Icon, type IconName } from "@/app/dashboard/Icons";
 import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
+import { FeedbackForm } from "@/app/dashboard/FeedbackForm";
 
 type ViewKey = "overview" | "subjects" | "attendance" | "calendar" | "timetable" | "planner" | "reports" | "semesters" | "settings";
 type DialogState =
@@ -482,7 +483,7 @@ export function DashboardClient() {
         <header className="topbar">
           <div className="topbar-left"><span className="topbar-title">Attendly</span><span className="topbar-period"><Icon name="calendar" />{activeSemester?.name ?? "No semester"}</span>{!user.isPreview && <button type="button" className={`sync-indicator ${saveStatus}`} onClick={saveStatus === "error" ? retryWorkspaceSave : undefined} aria-live="polite" title={saveStatus === "error" ? "Retry syncing changes" : undefined}><span className="status-dot"/><span className="sync-indicator-label">{saveStatus === "saving" ? "Saving" : saveStatus === "error" ? "Retry sync" : "Saved"}</span></button>}</div>
           <div className="topbar-actions">
-            {view !== "overview" && <button className="button button-quiet topbar-log-button" onClick={() => openAttendance()}><Icon name="plus" /><span className="topbar-log-label">Log attendance</span></button>}
+            {view !== "overview" && <button className="button button-quiet topbar-log-button" onClick={() => openAttendance()}><Icon name="plus" /><span className="topbar-log-label">Mark attendance</span></button>}
             <div className="account-menu-anchor">
               <button className="button button-quiet account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-label="Open account menu"><span className="avatar topbar-avatar">{initials(user.name)}</span><span className="account-trigger-name">{user.name.split(" ")[0]}</span><Icon name="more" /></button>
               {accountMenuOpen && <div className="account-menu">
@@ -507,7 +508,7 @@ export function DashboardClient() {
                 <button className="button button-quiet" onClick={() => openWholeDayAttendance()} aria-label="Mark whole day" title="Mark whole day"><Icon name="calendar"/><span>Mark whole day</span></button>
                 <button className="button button-primary" onClick={() => openAttendance()} aria-label="Mark single subject" title="Mark single subject"><Icon name="plus"/><span>Mark single subject</span></button>
               </>}
-              {(view === "attendance" || view === "calendar") && <button className="button button-primary" onClick={() => openAttendance()}><Icon name="plus" /><span>Log attendance</span></button>}
+              {(view === "attendance" || view === "calendar") && <button className="button button-primary" onClick={() => openAttendance()}><Icon name="plus" /><span>Mark attendance</span></button>}
               {view === "reports" && <button className="button button-quiet" onClick={() => exportCsv(selectedReportSubjectId)}><Icon name="download" />Export CSV</button>}
               {view === "semesters" && <button className="button button-primary" onClick={() => setDialog({ kind: "semester" })}><Icon name="plus" />New semester</button>}
             </div>
@@ -667,7 +668,6 @@ function SubjectsView({
   return <>
     <div className="section-title-row subject-section-heading">
       <div><h2>{showArchived ? "Archived subjects" : "Current subjects"}</h2><p>{subjects.filter((subject) => !subject.archived).length} active · history stays attached to each subject</p></div>
-      <button className="text-link" onClick={onToggleArchived}><Icon name="archive" />{showArchived ? "Show current" : "Show archived"}</button>
     </div>
     {visible.length ? <div className="subject-grid">{visible.map((subject) => {
       const summary = getSubjectTotals(records, subject.id);
@@ -709,7 +709,7 @@ function AttendanceView({
   const grouped = new Map<string, AttendanceRecord[]>();
   filtered.forEach((record) => grouped.set(record.date, [...(grouped.get(record.date) ?? []), record]));
   return <>
-    <div className="history-summary-row"><span><strong>{filtered.length}</strong> {filtered.length === 1 ? "class record" : "class records"}</span><div className="history-summary-actions"><span>Present, absent, or partial attendance by date</span><button className="button button-primary" onClick={onWholeDay}><Icon name="calendar"/>Mark whole day</button></div></div>
+    <div className="history-summary-row"><span><strong>{filtered.length}</strong> {filtered.length === 1 ? "class record" : "class records"}</span><div className="history-summary-actions"><button className="button button-primary" onClick={onWholeDay}><Icon name="calendar"/>Mark whole day</button></div></div>
     <div className="filter-bar">
       <select className="filter-select" aria-label="Filter by subject" value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}><option value="all">All subjects</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select>
       <select className="filter-select" aria-label="Filter by attendance status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="present">Present</option><option value="absent">Absent</option><option value="partial">Partial</option></select>
@@ -985,7 +985,7 @@ function TimetableView({
   return <div className="timetable-view-stack">
     {timetableProfile && <section className="card college-timetable-card">
       <div className="college-timetable-heading">
-        <div><span className="college-timetable-eyebrow">OFFICIAL SVCE TIMETABLE</span><h2>College timetable · original PDF</h2><p>{timetableProfile.department} · {getStudyYearLabel(collegeStudyYear)} · Semester {collegeSemester} · {timetableProfile.section} · {timetableProfile.academicYear}</p></div>
+        <div><h2>TIMETABLE</h2></div>
         <div className="college-timetable-actions">
           <button className="button button-quiet" onClick={() => {
             const id = refreshSequence.current + 1;
@@ -1160,7 +1160,6 @@ function PlannerView({ subjects, records, overallTarget }: {
             <small>Optional. Remaining periods count as missed in your plan.</small>
           </label>
         </div>
-        <p className="planner-rule-note">Minimum: <strong>{scope === "overall" ? `${target}% overall` : `${target}% for ${selectedSubject?.name}`}</strong>. Any higher target you have configured still applies.{scope === "overall" ? " Overall attendance is based on total periods, not an average of subject percentages." : " Each subject period is calculated separately."}</p>
       </>}
     </section>
 
@@ -1242,6 +1241,7 @@ function SettingsView({ settings, preview, onSave, onDeleteAccount }: {
       <PublicLegalLinks className="settings-legal-links" />
       <button className="button button-primary settings-save" onClick={() => onSave(draft)}><Icon name="check"/>Save settings</button>
     </section>
+    <FeedbackForm preview={preview} />
     <section className="card settings-card delete-account-card"><h2>Delete account</h2><p>Remove your Attendly account and permanently erase its saved data.</p>
       <div className="settings-note">This deletes your attendance, subjects, semesters, timetable, and account profile. You’ll confirm your password before deletion.</div>
       <button className="button button-danger settings-save" disabled={preview} onClick={onDeleteAccount}><Icon name="archive"/>{preview ? "Unavailable in preview" : "Delete account and data"}</button>

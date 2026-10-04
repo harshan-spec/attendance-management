@@ -579,6 +579,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .legal-page-links a:hover { color: #285b4c; text-decoration: underline; text-underline-offset: 3px; }
 
 /* Responsive layout */
+.feedback-form { display: grid; gap: 14px; margin-top: 20px; min-width: 0; }
+.feedback-form textarea { width: 100%; min-width: 0; resize: vertical; }
+.feedback-form .button { justify-self: start; max-width: 100%; }
 @media (min-width: 761px) and (max-height: 800px) {
   .sidebar { padding: 18px 14px 12px; }
   .sidebar .brand { margin-bottom: 18px; }
