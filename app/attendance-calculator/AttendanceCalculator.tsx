@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatPercentage } from "@/lib/attendance";
 import { Icon } from "@/app/dashboard/Icons";
 import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
+import { CalculatorAd } from "./CalculatorAd";
 
 export function AttendanceCalculator() {
   const [attendedText, setAttendedText] = useState("42");
@@ -63,6 +64,7 @@ export function AttendanceCalculator() {
         <div className="calculator-formula"><span>Periods attended</span><b>÷</b><span>Periods conducted</span><b>× 100</b><b>=</b><span>{formatPercentage(percentage)}</span></div>
         <p>For example, 42 attended periods out of 50 conducted periods gives you 84.00% attendance. Count each period, including multi-period practicals, in both totals.</p>
       </section>
+      <CalculatorAd />
       <section className="calculator-faq" aria-labelledby="calculator-faq-title">
         <h2 id="calculator-faq-title">A few useful details</h2>
         <details><summary>How is overall attendance different?</summary><p>Overall attendance uses the sum of attended periods across all subjects divided by the sum of conducted periods. It is not the average of your subject percentages.</p></details>

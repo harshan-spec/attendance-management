@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   description:
     "A calm, clear place to track attendance by subject, review class history, and plan ahead.",
   icons: { icon: "/favicon.svg" },
+  other: { "google-adsense-account": "ca-pub-2851684575995607" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

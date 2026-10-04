@@ -541,6 +541,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .calculator-formula { display: flex; justify-content: center; align-items: center; gap: 9px; margin: 16px 0; padding: 15px; border: 1px solid var(--line); border-radius: 10px; color: #295e4e; background: #f8fbf9; font-size: 13px; font-weight: 600; }
 .calculator-formula span { padding: 5px 8px; border-radius: 6px; background: #eaf4ee; }
 .calculator-faq { margin-top: 24px; }
+.calculator-ad { width: 100%; min-width: 0; margin: 28px 0; padding-top: 12px; border-top: 1px solid #e2eae6; }
+.calculator-ad[hidden] { display: none; }
+.calculator-ad-label { display: block; margin-bottom: 10px; color: #70817d; font-size: 10px; letter-spacing: .06em; text-align: center; text-transform: uppercase; }
+.calculator-ad .adsbygoogle { width: 100%; min-height: 100px; }
 .calculator-faq details { padding: 14px 0; border-bottom: 1px solid #e2eae6; }
 .calculator-faq summary { color: #334c4b; cursor: pointer; font-size: 13px; font-weight: 650; }
 .calculator-faq details p { color: #70817d; font-size: 12px; line-height: 1.6; }
