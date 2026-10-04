@@ -27,7 +27,7 @@ interface AuthContextValue {
   supabaseConfigured: boolean;
   enterPreview: () => void;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string, academicProfile: StudentAcademicProfile) => Promise<boolean>;
+  signUp: (name: string, email: string, password: string, phoneNumber: string, academicProfile: StudentAcademicProfile) => Promise<boolean>;
   sendPasswordReset: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   deleteAccount: (password: string) => Promise<void>;
@@ -160,14 +160,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, []);
 
-  const signUp = useCallback(async (name: string, email: string, password: string, academicProfile: StudentAcademicProfile) => {
+  const signUp = useCallback(async (name: string, email: string, password: string, phoneNumber: string, academicProfile: StudentAcademicProfile) => {
     const supabase = getSupabaseBrowserClient();
     const redirectTo = new URL("/auth/callback", window.location.origin);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: name, academic_profile: academicProfile },
+        data: { full_name: name, phone_number: phoneNumber, academic_profile: academicProfile },
         emailRedirectTo: redirectTo.toString(),
       },
     });

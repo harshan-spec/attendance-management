@@ -12,7 +12,7 @@ export default function PrivacyPage() {
   return <LegalPage title="Privacy policy" summary="This page explains the information Attendly processes when you use the attendance calculator, dashboard, account, and timetable features.">
     <p className="legal-updated">Effective October 4, 2026</p>
     <LegalSection title="Information you enter">
-      <p>An account uses your email address, display name, and academic profile (department, section, study year, semester, academic year, and an optional link to the college timetable). Your Attendly workspace can contain subjects, dated attendance records and notes, your weekly timetable, attendance targets, and display preferences.</p>
+      <p>An account uses your email address, display name, phone number, and academic profile (department, section, study year, semester, academic year, and an optional link to the college timetable). Your Attendly workspace can contain subjects, dated attendance records and notes, your weekly timetable, attendance targets, and display preferences.</p>
       <p>The public calculator works without an account and calculates from the numbers you enter in that page. Preview mode stores its sample workspace in this browser only. Signing in stores your account workspace with Supabase.</p>
     </LegalSection>
     <LegalSection title="How information is used">

@@ -10,6 +10,8 @@ import { safeLoginRedirect } from "@/lib/auth-redirect";
 
 type AuthMode = "login" | "signup" | "forgot" | "update";
 
+const phoneNumberPattern = /^\+?[0-9][0-9 ()-]{6,24}$/;
+
 const copy = {
   login: { heading: "Welcome back", detail: "Sign in to pick up where you left off." },
   signup: { heading: "Create your account", detail: "A clearer view of your semester starts here." },
@@ -21,6 +23,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   const router = useRouter();
   const { user, ready, signIn, signUp, sendPasswordReset, updatePassword, enterPreview, supabaseConfigured } = useAttendlyAuth();
   const [name, setName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -113,6 +116,10 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
     setBusy(true);
     try {
       if (mode === "signup" && signupStep === 1) {
+        if (!phoneNumberPattern.test(phoneNumber.trim())) {
+          setError("Enter a valid phone number, including the country code if needed.");
+          return;
+        }
         setSignupStep(2);
         return;
       } else if (mode === "signup") {
@@ -136,7 +143,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           academicYearCode: selectedAcademicYear.value,
           collegeTimetableUrl,
         };
-        const needsConfirmation = await signUp(name.trim(), email, password, academicProfile);
+        const needsConfirmation = await signUp(name.trim(), email.trim(), password, phoneNumber.trim(), academicProfile);
         if (needsConfirmation) {
           setSuccess("Click the verification link sent to your email to verify your account and open your Attendly workspace.");
         } else {
@@ -253,9 +260,13 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
                 Full name
                 <input autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" />
               </label>}
+              {mode === "signup" && <label className="field-label">
+                Phone number
+                <input autoComplete="tel" inputMode="tel" type="tel" required minLength={7} maxLength={25} value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="+91 98765 43210" />
+              </label>}
               {mode !== "update" && <label className="field-label">
                 Email address
-                <input autoComplete="email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@college.edu" />
+                <input autoComplete="email" inputMode="email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@svce.ac.in" />
               </label>}
               {mode !== "forgot" && <label className="field-label">
                 <span className="label-row"><span>{mode === "update" ? "New password" : "Password"}</span>{mode === "login" && <Link href="/forgot-password">Forgot password?</Link>}</span>

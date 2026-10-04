@@ -81,9 +81,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .auth-form-heading h2 { margin: 15px 0 5px; color: #1d3439; font-size: 34px; font-weight: 620; letter-spacing: -.045em; line-height: 1.13; }
 .auth-form-heading p { margin: 0; color: #75858a; font-size: 15px; }
 .auth-form { display: grid; gap: 19px; margin-top: 31px; }
-.field-label { display: grid; gap: 8px; color: #334b50; font-size: 13px; font-weight: 640; }
+.auth-form .field-label { min-width: 0; }
+.field-label { display: grid; gap: 8px; min-width: 0; color: #334b50; font-size: 13px; font-weight: 640; }
 .field-label input, .field-label select, .field-label textarea, .input-control {
-  width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid #dce5e1; border-radius: 9px; outline: none; color: #1c333a; background: #fff; font-size: 14px; font-weight: 450; transition: border-color .18s ease, box-shadow .18s ease;
+  width: 100%; min-width: 0; max-width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid #dce5e1; border-radius: 9px; outline: none; color: #1c333a; background: #fff; font-size: 14px; font-weight: 450; transition: border-color .18s ease, box-shadow .18s ease;
 }
 .field-label textarea { min-height: 90px; padding-top: 12px; resize: vertical; }
 .field-label input::placeholder, .field-label textarea::placeholder { color: #9aa8a7; }
@@ -710,6 +711,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .legal-page { padding-right: 18px; padding-left: 18px; }
   .legal-content { padding-top: 40px; }
   .legal-section { padding: 20px 18px; }
+}
+@media (max-width: 360px) {
+  .auth-form-side { padding-right: 16px; padding-left: 16px; }
+  .signup-progress { flex-wrap: wrap; row-gap: 7px; }
+  .signup-progress i { display: none; }
+  .signup-step-actions { flex-direction: column-reverse; }
+  .signup-step-actions .button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
