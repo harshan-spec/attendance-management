@@ -1448,8 +1448,6 @@ function SemesterModal({ defaultAcademicProfile, onClose, onSave }: {
   onSave: (semester: Semester) => void;
 }) {
   const [name, setName] = useState("");
-  const [startDate, setStartDate] = useState(dateKey(new Date()));
-  const [endDate, setEndDate] = useState("");
   const [academicOptions, setAcademicOptions] = useState<SvceTimetableOptions>(SVCE_FALLBACK_OPTIONS);
   const [department, setDepartment] = useState(defaultAcademicProfile?.departmentCode ?? "");
   const [academicYear, setAcademicYear] = useState("");
@@ -1478,7 +1476,6 @@ function SemesterModal({ defaultAcademicProfile, onClose, onSave }: {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) { setError("Give this semester a name."); return; }
-    if (endDate && endDate < startDate) { setError("The end date must be after the start date."); return; }
     const selectedDepartment = departmentOptions.find((option) => option.value === department);
     const selectedAcademicYear = academicYearOptions.find((option) => option.value === academicYear);
     const selectedSection = sectionOptions.find((option) => option.value === section);
@@ -1491,8 +1488,8 @@ function SemesterModal({ defaultAcademicProfile, onClose, onSave }: {
     onSave({
       id: createId(),
       name: name.trim(),
-      startDate,
-      endDate,
+      startDate: dateKey(new Date()),
+      endDate: "",
       archived: false,
       academicProfile: {
         department: selectedDepartment.label,
@@ -1512,7 +1509,6 @@ function SemesterModal({ defaultAcademicProfile, onClose, onSave }: {
       <div className="modal-header"><div><h2 id="semester-modal-title">Create a semester</h2><p>Set the academic details used to fetch this semester’s college timetable.</p></div><button className="icon-button modal-close" onClick={onClose} aria-label="Close dialog"><Icon name="close"/></button></div>
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Semester name<input autoFocus required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Semester 06"/></label>
-        <div className="form-two-col"><label className="field-label">Start date<input type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)}/></label><label className="field-label">End date <span className="optional-label">Optional</span><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)}/></label></div>
         <div className="signup-profile-grid">
           <label className="field-label signup-department-field">Department
             <select required value={department} onChange={(event) => setDepartment(event.target.value)}>
