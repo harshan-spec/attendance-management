@@ -8,12 +8,12 @@ export function LegalPage({ title, summary, children }: { title: string; summary
       <Link className="legal-back" href="/login">Sign in</Link>
     </header>
     <article className="legal-content">
-      <p className="legal-eyebrow">ATTENDLY · POLICIES &amp; SUPPORT</p>
+      <p className="legal-eyebrow">ATTENDLY · SUPPORT</p>
       <h1>{title}</h1>
       <p className="legal-summary">{summary}</p>
       {children}
       <nav className="legal-page-links" aria-label="Legal and support pages">
-        <Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/contact">Contact</Link>
+        <Link href="/contact">Contact</Link>
       </nav>
     </article>
   </main>;

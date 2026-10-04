@@ -28,7 +28,7 @@ export function FeedbackForm({ preview }: { preview: boolean }) {
       if (!response.ok) throw new Error(result.error || "Couldn’t send your feedback. Please try again.");
       setMessage("");
       submissionId.current = null;
-      setSuccess("Thank you! Your feedback has been sent to the Attendly owner.");
+      setSuccess("Thank you! Your feedback has been sent to Attendly admin");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Couldn’t send your feedback. Please try again.");
     } finally { setBusy(false); }
@@ -36,7 +36,7 @@ export function FeedbackForm({ preview }: { preview: boolean }) {
 
   return <section className="card settings-card feedback-card">
     <h2>Website feedback</h2>
-    <p>Report an issue or bug, or share a suggestion with the Attendly owner.</p>
+    <p>Report an issue or bug, or share a suggestion with Attendly admin.</p>
     <form className="feedback-form" onSubmit={submit}>
       <label className="field-label">Feedback type<select value={category} disabled={busy || preview} onChange={(event) => { setCategory(event.target.value); submissionId.current = null; }}><option value="bug">Bug or issue</option><option value="suggestion">Suggestion</option><option value="other">Other feedback</option></select></label>
       <label className="field-label">Your feedback<textarea required minLength={10} maxLength={3000} rows={5} value={message} disabled={busy || preview} placeholder="Describe what happened and what you expected…" onChange={(event) => { setMessage(event.target.value); submissionId.current = null; setSuccess(""); }} /></label>

@@ -697,14 +697,11 @@ function AttendanceView({
 }) {
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
   const filtered = [...records].filter((record) => {
     const status = getRecordStatus(record);
     return (subjectFilter === "all" || record.subjectId === subjectFilter) &&
-      (statusFilter === "all" || status === statusFilter) &&
-      (!fromDate || record.date >= fromDate) && (!toDate || record.date <= toDate);
+      (statusFilter === "all" || status === statusFilter);
   }).sort((a, b) => b.date.localeCompare(a.date));
   const grouped = new Map<string, AttendanceRecord[]>();
   filtered.forEach((record) => grouped.set(record.date, [...(grouped.get(record.date) ?? []), record]));
@@ -713,8 +710,6 @@ function AttendanceView({
     <div className="filter-bar">
       <select className="filter-select" aria-label="Filter by subject" value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}><option value="all">All subjects</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select>
       <select className="filter-select" aria-label="Filter by attendance status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="present">Present</option><option value="absent">Absent</option><option value="partial">Partial</option></select>
-      <label className="date-filter-label">From <input className="filter-input" type="date" aria-label="From date" value={fromDate} onChange={(event) => setFromDate(event.target.value)}/></label>
-      <label className="date-filter-label">To <input className="filter-input" type="date" aria-label="To date" value={toDate} onChange={(event) => setToDate(event.target.value)}/></label>
     </div>
     {grouped.size ? [...grouped.entries()].map(([date, dayRecords]) => <section className="card history-day" key={date}>
       <div className="history-day-heading"><strong>{formatDay(date)}, {formatDate(date, { day: "numeric", month: "long", year: "numeric" })}</strong><span>{dayRecords.length} {dayRecords.length === 1 ? "class" : "classes"} · {dayRecords.reduce((sum, record) => sum + record.periods, 0)} periods</span></div>
