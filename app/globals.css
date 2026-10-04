@@ -398,7 +398,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .timetable-table .timetable-break-heading.break { color: #5d7180; }
 .timetable-table td { padding: 0; vertical-align: middle; }
 .timetable-day-label { padding: 8px 4px 8px 0; color: var(--ink-soft) !important; text-align: left !important; white-space: nowrap; }
-.timetable-slot-editor { display: block; }
+.timetable-slot-editor { position: relative; display: block; }
 .timetable-slot-editor select { width: 100%; min-height: 62px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink-soft); background: var(--panel); font-size: 10px; }
 .timetable-slot-editor select:disabled { color: var(--muted); background: var(--panel-soft); }
 .timetable-subject-chip, .timetable-free-slot { min-height: 62px; display: grid; align-content: center; justify-items: start; gap: 4px; padding: 7px 9px; border: 1px solid var(--line); border-left: 4px solid #77a98e; border-radius: 9px; background: var(--panel-soft); }
