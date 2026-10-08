@@ -295,7 +295,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .internal-subject-heading h2 { margin: 4px 0 0; color: var(--ink); font-size: 16px; font-weight: 680; }
 .internal-subject-heading p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
 .internal-result-pill { min-width: 104px; display: grid; justify-items: end; gap: 4px; text-align: right; }
-.internal-result-pill strong { color: var(--ink); font-size: 17px; font-weight: 700; }
+.internal-result-pill strong { color: var(--ink); font-size: 20px; font-weight: 720; }
+.internal-result-pill small { color: var(--muted); font-size: 10px; }
 .internal-result-pill span { color: var(--muted); font-size: 10px; }
 .internal-result-pill.passed span { color: #2b795a; }
 .internal-result-pill.failed span { color: var(--red); }
