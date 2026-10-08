@@ -667,6 +667,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .auth-form-side { min-height: 100svh; padding: 22px 24px 18px; }
   .auth-mobile-brand { display: block; }
   .auth-form-wrap { padding: 45px 0 35px; }
+  .field-label input, .field-label select, .field-label textarea, .input-control { font-size: 16px; }
   .auth-footnote { font-size: 10px; }
   .auth-legal-links { flex-basis: 100%; justify-content: flex-start; }
   .planner-result { flex-basis: calc((100% - 12px) / 2); }
