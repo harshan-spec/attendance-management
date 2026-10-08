@@ -279,6 +279,28 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Subject management */
 .subject-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 13px; }
+.internal-summary-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px; margin-bottom: 14px; }
+.internal-summary-card { display: grid; gap: 7px; padding: 17px 19px; }
+.internal-summary-card > span, .internal-subject-type { color: #6f8a7f; font-size: 9px; font-weight: 760; letter-spacing: .1em; text-transform: uppercase; }
+.internal-summary-card > strong { color: var(--ink); font-size: 27px; font-weight: 680; letter-spacing: -.04em; }
+.internal-summary-card > small { color: var(--muted); font-size: 11px; }
+.internal-subject-list { display: grid; gap: 13px; }
+.internal-subject-card { padding: 19px; }
+.internal-subject-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+.internal-subject-heading h2 { margin: 4px 0 0; color: var(--ink); font-size: 16px; font-weight: 680; }
+.internal-subject-heading p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.internal-result-pill { min-width: 104px; display: grid; justify-items: end; gap: 4px; text-align: right; }
+.internal-result-pill strong { color: var(--ink); font-size: 17px; font-weight: 700; }
+.internal-result-pill span { color: var(--muted); font-size: 10px; }
+.internal-result-pill.passed span { color: #2b795a; }
+.internal-result-pill.failed span { color: var(--red); }
+.internal-result-pill.provisional span { color: #9a6e2f; }
+.internal-mark-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.internal-mark-field { display: grid; gap: 5px; color: var(--ink-soft); font-size: 11px; font-weight: 620; }
+.internal-mark-field small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.internal-mark-field input { width: 100%; min-width: 0; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--panel-soft); font: inherit; font-size: 13px; }
+.internal-mark-field input:focus { outline: 2px solid var(--mint); border-color: var(--forest); }
+.internal-result-note { margin: 13px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .subject-card { position: relative; overflow: hidden; padding: 19px; }
 .subject-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .subject-identity { display: flex; gap: 11px; align-items: center; min-width: 0; }
@@ -622,6 +644,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .planner-control-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .planner-current { grid-column: 1 / -1; }
   .subject-grid { grid-template-columns: 1fr; }
+  .internal-summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .internal-summary-card { padding: 13px; }
+  .internal-summary-card > strong { font-size: 22px; }
+  .internal-subject-card { padding: 14px; }
+  .internal-mark-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+  .internal-subject-heading h2 { font-size: 14px; }
 }
 @media (max-width: 760px) {
   .auth-page { display: block; min-height: 100vh; min-height: 100svh; min-height: 100dvh; }

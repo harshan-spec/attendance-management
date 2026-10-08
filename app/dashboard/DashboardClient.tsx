@@ -13,8 +13,9 @@ import { createId } from "@/lib/id";
 import { Icon, type IconName } from "@/app/dashboard/Icons";
 import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
 import { FeedbackForm } from "@/app/dashboard/FeedbackForm";
+import { calculateInternal, markKeysForType, markLimit, type InternalMarkKey, type SubjectType } from "@/lib/internal-marks";
 
-type ViewKey = "overview" | "subjects" | "attendance" | "calendar" | "timetable" | "planner" | "reports" | "semesters" | "settings";
+type ViewKey = "overview" | "subjects" | "attendance" | "calendar" | "timetable" | "internals" | "planner" | "reports" | "semesters" | "settings";
 type DialogState =
   | { kind: "attendance"; record?: AttendanceRecord; subjectId?: string; date?: string }
   | { kind: "whole-day-attendance"; date?: string }
@@ -32,6 +33,7 @@ const viewMeta: Record<ViewKey, { title: string; subtitle: string; icon: IconNam
   attendance: { title: "Class history", subtitle: "Every class, with its date, day, periods, and status.", icon: "clock" },
   calendar: { title: "Calendar", subtitle: "Review recorded attendance by date.", icon: "calendar" },
   timetable: { title: "Timetable", subtitle: "Plan seven class hours each weekday, Monday through Friday.", icon: "book-open" },
+  internals: { title: "Internal marks", subtitle: "Enter assessment marks and see the calculated internal score for each subject.", icon: "chart" },
   planner: { title: "Plan ahead", subtitle: "See what future classes could change before they happen.", icon: "target" },
   reports: { title: "Semester report", subtitle: "A subject-by-subject summary you can take with you.", icon: "chart" },
   semesters: { title: "Semesters", subtitle: "Keep current classes and past terms organized.", icon: "layers" },
@@ -44,6 +46,7 @@ const navItems: { key: ViewKey; label: string; icon: IconName; mobileHide?: bool
   { key: "attendance", label: "Attendance", icon: "clock" },
   { key: "calendar", label: "Calendar", icon: "calendar" },
   { key: "timetable", label: "Timetable", icon: "book-open" },
+  { key: "internals", label: "Internals", icon: "chart", mobileHide: true },
   { key: "planner", label: "Planner", icon: "target" },
   { key: "reports", label: "Reports", icon: "chart", mobileHide: true },
   { key: "semesters", label: "Semesters", icon: "layers", mobileHide: true },
@@ -69,8 +72,8 @@ function loadPreviewWorkspace(userId: string): WorkspaceData {
       const parsed = JSON.parse(saved) as WorkspaceData;
       return {
         ...parsed,
-        subjects: (Array.isArray(parsed.subjects) ? parsed.subjects : []).map(({ id, semesterId, name, code, requiredAttendance, color, archived }) => ({
-          id, semesterId, name, code, requiredAttendance, color, archived,
+        subjects: (Array.isArray(parsed.subjects) ? parsed.subjects : []).map(({ id, semesterId, name, code, requiredAttendance, color, archived, subjectType, internalMarks }) => ({
+          id, semesterId, name, code, requiredAttendance, color, archived, subjectType: subjectType ?? "theory", internalMarks: internalMarks ?? {},
         })),
         timetable: Array.isArray(parsed.timetable) ? parsed.timetable : [],
       };
@@ -329,6 +332,11 @@ export function DashboardClient() {
     setDialog(null);
     notify(dialog?.kind === "subject" && dialog.subject ? "Subject details saved." : "Subject added to this semester.");
   }
+  function updateInternalMark(subjectId: string, key: InternalMarkKey, value: number | null) {
+    updateData((current) => ({ ...current, subjects: current.subjects.map((subject) => subject.id === subjectId
+      ? { ...subject, internalMarks: { ...(subject.internalMarks ?? {}), [key]: value } }
+      : subject) }));
+  }
   function saveSemester(semester: Semester) {
     updateData((current) => ({ ...current, semesters: [...current.semesters, semester], activeSemesterId: semester.id }));
     setDialog(null);
@@ -488,7 +496,7 @@ export function DashboardClient() {
               <button className="button button-quiet account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-label="Open account menu"><span className="avatar topbar-avatar">{initials(user.name)}</span><span className="account-trigger-name">{user.name.split(" ")[0]}</span><Icon name="more" /></button>
               {accountMenuOpen && <div className="account-menu">
                 <div className="account-menu-heading"><strong>{user.name}</strong><span>{user.isPreview ? "Preview account" : user.email}</span></div>
-                {(["reports", "semesters", "settings"] as ViewKey[]).map((key) => <button key={key} onClick={() => { setView(key); setAccountMenuOpen(false); }}><Icon name={viewMeta[key].icon} />{viewMeta[key].title}</button>)}
+                {(["internals", "reports", "semesters", "settings"] as ViewKey[]).map((key) => <button key={key} onClick={() => { setView(key); setAccountMenuOpen(false); }}><Icon name={viewMeta[key].icon} />{viewMeta[key].title}</button>)}
                 <button className="account-signout" onClick={handleSignOut}><Icon name="logout" />Sign out</button>
               </div>}
             </div>
@@ -519,6 +527,7 @@ export function DashboardClient() {
           {view === "attendance" && <AttendanceView subjects={semesterSubjects} records={semesterRecords} onEdit={(record) => setDialog({ kind: "attendance", record })} onDelete={(record) => setDialog({ kind: "delete-record", record })} onAdd={() => openAttendance()} onWholeDay={() => openWholeDayAttendance()} />}
           {view === "calendar" && <CalendarView subjects={semesterSubjects} records={semesterRecords} onAdd={(date) => openAttendance(undefined, date)} onWholeDay={openWholeDayAttendance} />}
           {view === "timetable" && activeSemester && <TimetableView semesterId={activeSemester.id} semesterName={activeSemester.name} academicProfile={user.academicProfile} semesterAcademicProfile={activeSemester.academicProfile} subjects={semesterSubjects} timetable={data.timetable} onSave={saveTimetable} onAddSubject={() => setDialog({ kind: "subject" })} />}
+          {view === "internals" && <InternalMarksView subjects={currentSubjects} onChange={updateInternalMark} onAddSubject={() => setDialog({ kind: "subject" })} />}
           {view === "planner" && <PlannerView subjects={currentSubjects} records={activeRecords} overallTarget={data.settings.overallTarget} />}
           {view === "reports" && <ReportsView subjects={currentSubjects} records={activeRecords} totals={totals} target={data.settings.overallTarget} subjectId={selectedReportSubjectId} onSubjectChange={setReportSubjectId} onExport={() => exportCsv(selectedReportSubjectId)} />}
           {view === "semesters" && <SemestersView semesters={data.semesters} activeSemesterId={activeSemester?.id ?? ""} onActivate={setActiveSemester} onArchive={(semester) => setDialog({ kind: "archive-semester", semester })} onCreate={() => setDialog({ kind: "semester" })} />}
@@ -686,6 +695,33 @@ function SubjectsView({
         {!subject.archived && <div className="subject-actions-row"><button className="button button-quiet quick-present" onClick={() => onQuickLog(subject.id, "present")}><Icon name="check"/>Present</button><button className="button button-quiet quick-absent" onClick={() => onQuickLog(subject.id, "absent")}><Icon name="close"/>Absent</button><button className="button button-quiet" onClick={() => onLog(subject.id)}><Icon name="plus"/>More</button></div>}
       </article>;
     })}</div> : <div className="card"><EmptyState title={showArchived ? "No archived subjects" : "Add your first subject"} copy={showArchived ? "Subjects you archive will stay here with their attendance history." : "Add the classes you’re taking. Each subject starts with a 75% required attendance target."} action={!showArchived ? <button className="button button-primary" onClick={onAdd}><Icon name="plus"/>Add subject</button> : undefined}/></div>}
+  </>;
+}
+
+function InternalMarksView({ subjects, onChange, onAddSubject }: { subjects: Subject[]; onChange: (subjectId: string, key: InternalMarkKey, value: number | null) => void; onAddSubject: () => void }) {
+  const results = subjects.map((subject) => ({ subject, result: calculateInternal(subject.subjectType ?? "theory", subject.internalMarks ?? {}) })).filter(({ result }) => result.entered > 0);
+  const average = results.length ? results.reduce((sum, entry) => sum + (entry.result.percentage ?? 0), 0) / results.length : null;
+  const completed = results.filter(({ result }) => result.complete).length;
+  if (!subjects.length) return <div className="card"><EmptyState title="Add subjects to enter internal marks" copy="Choose each subject type when adding it. The correct internal calculation will then be used here." action={<button className="button button-primary" onClick={onAddSubject}><Icon name="plus"/>Add subject</button>}/></div>;
+  return <>
+    <section className="internal-summary-grid">
+      <article className="card internal-summary-card"><span>AVERAGE ACROSS SUBJECTS</span><strong>{average === null ? "—" : `${average.toFixed(2)}%`}</strong><small>Each subject score is normalized to its own maximum.</small></article>
+      <article className="card internal-summary-card"><span>SUBJECTS WITH MARKS</span><strong>{results.length} of {subjects.length}</strong><small>{completed} complete · {results.length - completed} provisional</small></article>
+    </section>
+    <div className="internal-subject-list">{subjects.map((subject) => {
+      const type = subject.subjectType ?? "theory";
+      const marks = subject.internalMarks ?? {};
+      const result = calculateInternal(type, marks);
+      const typeLabel = type === "theory-practices" ? "Theory & Practices" : type === "laboratory" ? "Laboratory" : "Theory";
+      return <section className="card internal-subject-card" key={subject.id}>
+        <div className="internal-subject-heading"><div><span className="internal-subject-type">{typeLabel}</span><h2>{subject.name}</h2>{subject.code && <p>{subject.code}</p>}</div><div className={`internal-result-pill ${result.complete ? result.passed ? "passed" : "failed" : result.entered ? "provisional" : "empty"}`}><strong>{result.score === null ? "—" : `${result.score.toFixed(2)} / ${result.maximum}`}</strong><span>{result.complete ? result.passed ? "Pass" : "Below pass mark" : result.entered ? "Provisional" : "No marks"}</span></div></div>
+        <div className="internal-mark-grid">{markKeysForType(type).map((key) => {
+          const labels: Record<InternalMarkKey, string> = { cat1: "CAT 1", assignment1: "Assignment 1", cat2: "CAT 2", assignment2: "Assignment 2", cat3: "CAT 3", assignment3: "Assignment 3", model: "Model exam" };
+          return <label className="internal-mark-field" key={key}><span>{labels[key]} <small>/ {markLimit(key)}</small></span><input aria-label={`${subject.name} ${labels[key]}`} type="number" min="0" max={markLimit(key)} step="0.01" inputMode="decimal" placeholder="—" value={marks[key] ?? ""} onChange={(event) => { const raw = event.target.value; const next = raw === "" ? null : Number(raw); if (next === null || (Number.isFinite(next) && next >= 0 && next <= markLimit(key))) onChange(subject.id, key, next); }}/></label>;
+        })}</div>
+        <p className="internal-result-note">{result.complete ? `Pass mark: ${result.passMark} / ${result.maximum}.` : `Pass mark: ${result.passMark} / ${result.maximum}. ${result.entered ? "Partial score is provisional; blank marks count as zero until entered." : "Enter marks to calculate the score."}`}</p>
+      </section>;
+    })}</div>
   </>;
 }
 
@@ -1400,6 +1436,7 @@ function SubjectModal({
 }) {
   const [name, setName] = useState(subject?.name ?? "");
   const [code, setCode] = useState(subject?.code ?? "");
+  const [subjectType, setSubjectType] = useState<SubjectType>(subject?.subjectType ?? "theory");
   const required = subject?.requiredAttendance ?? Math.max(75, defaultTarget);
   const color = subject?.color ?? subjectColors[0];
   const [error, setError] = useState("");
@@ -1416,6 +1453,8 @@ function SubjectModal({
       requiredAttendance: required,
       color,
       archived: subject?.archived ?? false,
+      subjectType,
+      internalMarks: subject?.subjectType === subjectType ? subject.internalMarks ?? {} : {},
     });
   }
 
@@ -1425,6 +1464,8 @@ function SubjectModal({
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">Subject name<input autoFocus required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Database Systems"/></label>
         <label className="field-label">Subject code <span className="optional-label">Optional</span><input maxLength={20} value={code} onChange={(event) => setCode(event.target.value)} placeholder="e.g. CS 301"/></label>
+        <label className="field-label">Subject type<select value={subjectType} onChange={(event) => setSubjectType(event.target.value as SubjectType)}><option value="theory">Theory</option><option value="theory-practices">Theory &amp; Practices</option><option value="laboratory">Laboratory</option></select></label>
+        {subject && subjectType !== (subject.subjectType ?? "theory") && <p className="modal-helper">Changing the subject type clears its existing internal marks because the assessment structure changes.</p>}
         <p className="modal-helper">Attendance minimums stay at 80% overall and 75% for each subject.</p>
         {error && <p className="form-message form-error" role="alert">{error}</p>}
         <div className="modal-actions"><button className="button button-quiet" type="button" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit"><Icon name="check"/>{subject ? "Save subject" : "Add subject"}</button></div>
