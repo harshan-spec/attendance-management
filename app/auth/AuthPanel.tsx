@@ -27,6 +27,8 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -116,6 +118,10 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
     setBusy(true);
     try {
       if (mode === "signup" && signupStep === 1) {
+        if (password !== confirmPassword) {
+          setError("Those passwords don’t match.");
+          return;
+        }
         if (!phoneNumberPattern.test(phoneNumber.trim())) {
           setError("Enter a valid phone number, including the country code if needed.");
           return;
@@ -268,11 +274,20 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
                 Email address
                 <input autoComplete="email" inputMode="email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@svce.ac.in" />
               </label>}
-              {mode !== "forgot" && <label className="field-label">
-                <span className="label-row"><span>{mode === "update" ? "New password" : "Password"}</span>{mode === "login" && <Link href="/forgot-password">Forgot password?</Link>}</span>
-                <input autoComplete={mode === "login" ? "current-password" : "new-password"} type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" />
-              </label>}
-              {mode === "update" && <label className="field-label">Confirm new password<input autoComplete="new-password" type="password" minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Enter it again"/></label>}
+              {mode !== "forgot" && <div className="field-label">
+                <span className="label-row"><label htmlFor="auth-password">{mode === "update" ? "New password" : "Password"}</label>{mode === "login" && <Link href="/forgot-password">Forgot password?</Link>}</span>
+                <span className="password-input-wrap">
+                  <input id="auth-password" autoComplete={mode === "login" ? "current-password" : "new-password"} type={showPassword ? "text" : "password"} minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" />
+                  <button className="password-visibility" type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-controls="auth-password" aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? "Hide" : "Show"}</button>
+                </span>
+              </div>}
+              {(mode === "signup" || mode === "update") && <div className="field-label">
+                <label htmlFor="auth-confirm-password">{mode === "update" ? "Confirm new password" : "Confirm password"}</label>
+                <span className="password-input-wrap">
+                  <input id="auth-confirm-password" autoComplete="new-password" type={showConfirmPassword ? "text" : "password"} minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Enter it again" />
+                  <button className="password-visibility" type="button" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} aria-controls="auth-confirm-password" aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword((visible) => !visible)}>{showConfirmPassword ? "Hide" : "Show"}</button>
+                </span>
+              </div>}
             </>}
 
             {error && <p className="form-message form-error" role="alert">{error}</p>}
