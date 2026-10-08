@@ -703,37 +703,63 @@ function SubjectsView({
 }
 
 function InternalMarksView({ subjects, onChange, onAddSubject }: { subjects: Subject[]; onChange: (subjectId: string, key: InternalMarkKey, value: number | null | undefined) => void; onAddSubject: () => void }) {
-  const results = subjects.map((subject) => ({ subject, result: calculateInternal(subject.subjectType ?? "theory", subject.internalMarks ?? {}) })).filter(({ result }) => result.entered > 0);
-  const average = results.length ? results.reduce((sum, entry) => sum + (entry.result.percentage ?? 0), 0) / results.length : null;
-  const completed = results.filter(({ result }) => result.complete).length;
+  const assessmentColumns: InternalMarkKey[] = ["cat1", "assignment1", "cat2", "assignment2", "cat3", "assignment3", "model"];
+  const assessmentLabels: Record<InternalMarkKey, string> = { cat1: "CAT-1", assignment1: "Assignment-1", cat2: "CAT-2", assignment2: "Assignment-2", cat3: "CAT-3", assignment3: "Assignment-3", model: "Model exam" };
   if (!subjects.length) return <div className="card"><EmptyState title="Add subjects to enter internal marks" copy="Choose each subject type when adding it. The correct internal calculation will then be used here." action={<button className="button button-primary" onClick={onAddSubject}><Icon name="plus"/>Add subject</button>}/></div>;
   return <>
-    <section className="internal-summary-grid">
-      <article className="card internal-summary-card"><span>AVERAGE ACROSS SUBJECTS</span><strong>{average === null ? "—" : `${average.toFixed(2)}%`}</strong><small>Each subject score is normalized to its own maximum.</small></article>
-      <article className="card internal-summary-card"><span>SUBJECTS WITH MARKS</span><strong>{results.length} of {subjects.length}</strong><small>{completed} complete · {results.length - completed} provisional</small></article>
-    </section>
-    <div className="internal-subject-list">{subjects.map((subject) => {
-      const type = subject.subjectType ?? "theory";
-      const marks = subject.internalMarks ?? {};
-      const result = calculateInternal(type, marks);
-      const typeLabel = type === "theory-practices" ? "Theory & Practices" : type === "laboratory" ? "Laboratory" : "Theory";
-      return <section className="card internal-subject-card" key={subject.id}>
-        <div className="internal-subject-heading"><div><span className="internal-subject-type">{typeLabel}</span><h2>{subject.name}</h2>{subject.code && <p>{subject.code}</p>}</div><div className={`internal-result-pill ${result.complete ? result.passed ? "passed" : "failed" : result.entered ? "provisional" : "empty"}`}><strong>{result.score === null ? "—" : `${result.score.toFixed(2)} / ${result.maximum}`}</strong><small>{result.percentage === null ? "—" : `${result.percentage.toFixed(2)}%`}</small><span>{result.complete ? result.passed ? "Pass" : "Below pass mark" : result.entered ? "Provisional" : "No marks"}</span></div></div>
-        <div className="internal-mark-grid">{markKeysForType(type).map((key) => {
-          const labels: Record<InternalMarkKey, string> = { cat1: "CAT 1", assignment1: "Assignment 1", cat2: "CAT 2", assignment2: "Assignment 2", cat3: "CAT 3", assignment3: "Assignment 3", model: "Model exam" };
-          const fieldId = `internal-${subject.id}-${key}`;
-          const notApplicable = marks[key] === null;
-          return <div className="internal-mark-field" key={key}>
-            <label htmlFor={fieldId}>{labels[key]} <small>/ {markLimit(key)}</small></label>
-            <div className="internal-mark-entry">
-              <input id={fieldId} aria-label={`${subject.name} ${labels[key]}`} type="number" min="0" max={markLimit(key)} step="0.01" inputMode="decimal" placeholder={notApplicable ? "N/A" : "—"} value={typeof marks[key] === "number" ? marks[key] : ""} disabled={notApplicable} onChange={(event) => { const raw = event.target.value; const next = raw === "" ? undefined : Number(raw); if (next === undefined || (Number.isFinite(next) && next >= 0 && next <= markLimit(key))) onChange(subject.id, key, next); }}/>
-              <button className={`internal-na-button ${notApplicable ? "active" : ""}`} type="button" aria-label={`${subject.name} ${labels[key]} ${notApplicable ? "remove N/A" : "mark N/A"}`} aria-pressed={notApplicable} onClick={() => onChange(subject.id, key, notApplicable ? undefined : null)}>{notApplicable ? "Undo" : "N/A"}</button>
-            </div>
-          </div>;
-        })}</div>
-        <p className="internal-result-note">{result.complete ? `Pass mark: ${result.passMark} / ${result.maximum}. N/A assessments count as zero.` : `Pass mark: ${result.passMark} / ${result.maximum}. ${result.entered ? "Partial score is provisional; enter pending marks or mark non-applicable items N/A." : "Enter marks, and mark non-applicable items N/A."}`}</p>
-      </section>;
-    })}</div>
+    <p className="internal-table-hint">Enter and compare marks for every subject in one table. N/A assessments count as zero; swipe horizontally on smaller screens.</p>
+    <div className="card internal-marks-table-card">
+      <div className="internal-marks-table-scroll" tabIndex={0} aria-label="Internal marks table. Scroll horizontally to view all columns.">
+        <table className="internal-marks-table">
+          <caption className="sr-only">Assessment marks and calculated internal results for all subjects</caption>
+          <thead>
+            <tr>
+              <th scope="col" rowSpan={2}>Subject</th>
+              <th scope="col" rowSpan={2}>Type</th>
+              <th scope="colgroup" colSpan={2}>CAT 1</th>
+              <th scope="colgroup" colSpan={2}>CAT 2</th>
+              <th scope="colgroup" colSpan={2}>CAT 3</th>
+              <th scope="col" rowSpan={2}>Model exam</th>
+              <th scope="col" rowSpan={2}>Internal marks</th>
+              <th scope="col" rowSpan={2}>Percentage</th>
+              <th scope="col" rowSpan={2}>Result</th>
+            </tr>
+            <tr>
+              <th scope="col">CAT</th><th scope="col">Assignment</th>
+              <th scope="col">CAT</th><th scope="col">Assignment</th>
+              <th scope="col">CAT</th><th scope="col">Assignment</th>
+            </tr>
+          </thead>
+          <tbody>{subjects.map((subject) => {
+            const type = subject.subjectType ?? "theory";
+            const marks = subject.internalMarks ?? {};
+            const applicableKeys = markKeysForType(type);
+            const result = calculateInternal(type, marks);
+            const typeLabel = type === "theory-practices" ? "Theory & Practices" : type === "laboratory" ? "Laboratory" : "Theory";
+            const resultLabel = result.complete ? result.passed ? "Pass" : "Below pass mark" : result.entered ? "Provisional" : "No marks";
+            const resultStatus = result.complete ? result.passed ? "passed" : "failed" : result.entered ? "provisional" : "empty";
+            return <tr key={subject.id}>
+              <th scope="row" className="internal-table-subject"><strong>{subject.name}</strong>{subject.code && <small>{subject.code}</small>}</th>
+              <td><span className="internal-table-type">{typeLabel}</span></td>
+              {assessmentColumns.map((key) => {
+                if (!applicableKeys.includes(key)) return <td className="internal-table-na" key={key}>—</td>;
+                const fieldId = `internal-${subject.id}-${key}`;
+                const notApplicable = marks[key] === null;
+                return <td key={key}>
+                  <div className="internal-table-mark">
+                    <input id={fieldId} aria-label={`${subject.name} ${assessmentLabels[key]} mark out of ${markLimit(key)}`} type="number" min="0" max={markLimit(key)} step="0.01" inputMode="decimal" placeholder={notApplicable ? "N/A" : "—"} value={typeof marks[key] === "number" ? marks[key] : ""} disabled={notApplicable} onChange={(event) => { const raw = event.target.value; const next = raw === "" ? undefined : Number(raw); if (next === undefined || (Number.isFinite(next) && next >= 0 && next <= markLimit(key))) onChange(subject.id, key, next); }}/>
+                    <button className={`internal-na-button ${notApplicable ? "active" : ""}`} type="button" aria-label={`${subject.name} ${assessmentLabels[key]} ${notApplicable ? "remove N/A" : "mark N/A"}`} aria-pressed={notApplicable} onClick={() => onChange(subject.id, key, notApplicable ? undefined : null)}>{notApplicable ? "Undo" : "N/A"}</button>
+                  </div>
+                </td>;
+              })}
+              <td className="internal-table-score-cell"><strong>{result.score === null ? "—" : `${result.score.toFixed(2)} / ${result.maximum}`}</strong><small>Pass mark: {result.passMark} / {result.maximum}</small></td>
+              <td className="internal-table-percentage">{result.percentage === null ? "—" : `${result.percentage.toFixed(2)}%`}</td>
+              <td><span className={`internal-table-status ${resultStatus}`}>{resultLabel}</span></td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>
+    </div>
   </>;
 }
 
