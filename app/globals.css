@@ -241,7 +241,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .subject-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .subject-list-row:last-child { border-bottom: 0; }
 .subject-list-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.subject-color { width: 8px; height: 31px; flex: 0 0 8px; border-radius: 4px; }
 .subject-list-copy { min-width: 0; }
 .subject-list-copy strong { display: block; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
 .subject-list-copy span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
@@ -264,7 +263,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .recent-date { color: var(--muted); font-size: 11px; line-height: 1.35; }
 .recent-date strong { display: block; color: var(--ink-soft); font-size: 12px; font-weight: 650; }
 .recent-subject { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.recent-subject .subject-color { width: 6px; height: 24px; flex-basis: 6px; }
 .recent-subject strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
 .recent-periods { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .recent-empty { padding: 18px 0; color: var(--muted); font-size: 12px; }
@@ -272,7 +270,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .today-class-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 0 24px; margin-top: 12px; }
 .today-class-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 10px; min-height: 57px; border-top: 1px solid var(--line); }
 .today-class-subject { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.today-class-subject .subject-color { width: 6px; height: 28px; flex-basis: 6px; }
 .today-class-subject > div { min-width: 0; }
 .today-class-subject strong { display: block; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
 .today-class-subject span:last-child { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
@@ -318,8 +315,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .internal-table-status.provisional { color: #9a6e2f; background: rgba(154,110,47,.1); }
 .subject-card { position: relative; overflow: hidden; padding: 19px; }
 .subject-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.subject-identity { display: flex; gap: 11px; align-items: center; min-width: 0; }
-.subject-identity .subject-color { width: 10px; height: 38px; flex-basis: 10px; }
+.subject-identity { display: flex; align-items: center; min-width: 0; }
 .subject-name { min-width: 0; }
 .subject-name h3 { overflow: hidden; margin: 0; color: var(--ink); font-size: 14px; font-weight: 660; text-overflow: ellipsis; white-space: nowrap; }
 .subject-name p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
@@ -359,7 +355,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .history-day-heading span { color: var(--muted); font-size: 11px; }
 .history-row { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(125px,.9fr) auto auto; align-items: center; gap: 13px; min-height: 57px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
 .history-row:last-child { border-bottom: 0; }
-.history-subject { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.history-subject { display: flex; align-items: center; min-width: 0; }
 .history-subject strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
 .history-detail { color: var(--muted); font-size: 11px; }
 .history-actions { display: flex; gap: 1px; }
@@ -388,8 +384,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .calendar-side-card { padding: 19px; }
 .calendar-side-card h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 660; }
 .calendar-side-card > p { margin: 4px 0 15px; color: var(--muted); font-size: 11px; }
-.calendar-record { display: grid; grid-template-columns: 7px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); }
-.calendar-record .subject-color { width: 6px; height: 28px; }
+.calendar-record { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); }
 .calendar-record strong { display: block; color: var(--ink); font-size: 11px; font-weight: 640; }
 .calendar-record span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
 .calendar-add-day { width: 100%; margin-top: 8px; }
@@ -490,8 +485,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .report-table th { padding: 11px 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; font-weight: 740; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
 .report-table td { padding: 14px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
 .report-table tr:last-child td { border-bottom: 0; }
-.report-subject { display: flex; align-items: center; gap: 9px; color: var(--ink); font-weight: 630; }
-.report-subject .subject-color { width: 6px; height: 24px; flex-basis: 6px; }
+.report-subject { color: var(--ink); font-weight: 630; }
 .report-summary { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 14px; }
 .report-controls { padding: 18px; margin-bottom: 14px; }
 .report-controls .field-label { max-width: 420px; }
@@ -542,8 +536,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .day-attendance-preview-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--ink); font-size: 12px; }
 .day-attendance-preview-heading > span { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .day-attendance-preview ul { display: grid; gap: 0; margin: 10px 0 0; padding: 0; list-style: none; }
-.day-attendance-preview li { display: grid; grid-template-columns: 7px minmax(100px, .8fr) minmax(0, 1.2fr); align-items: center; gap: 9px; padding: 8px 0; border-top: 1px solid var(--line); }
-.day-attendance-preview li .subject-color { width: 6px; height: 24px; flex-basis: 6px; }
+.day-attendance-preview li { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(0, 1.2fr); align-items: center; gap: 9px; padding: 8px 0; border-top: 1px solid var(--line); }
 .day-attendance-preview li strong { overflow: hidden; color: var(--ink-soft); font-size: 11px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
 .day-attendance-preview li > span:last-child { color: var(--muted); font-size: 10px; text-align: right; }
 .day-attendance-preview > p { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -877,7 +870,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .day-attendance-actions > div { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
   .day-attendance-actions > .button { width: 100%; }
   .day-attendance-actions .button { gap: 6px; padding-right: 8px; padding-left: 8px; font-size: 11px; }
-  .day-attendance-preview li { grid-template-columns: 7px minmax(0, .8fr) minmax(0, 1.2fr); gap: 7px; }
+  .day-attendance-preview li { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 7px; }
   .day-attendance-preview li > span:last-child { font-size: 9px; }
   .day-attendance-backdrop { padding: 12px; }
   .day-attendance-modal { max-height: calc(100svh - 24px); padding: 16px; }

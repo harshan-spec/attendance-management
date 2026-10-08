@@ -17,7 +17,6 @@ export interface Subject {
   name: string;
   code: string;
   requiredAttendance: number;
-  color: string;
   archived: boolean;
   subjectType?: "theory" | "theory-practices" | "laboratory";
   internalMarks?: Partial<Record<"cat1" | "cat2" | "cat3" | "assignment1" | "assignment2" | "assignment3" | "model", number | null>>;

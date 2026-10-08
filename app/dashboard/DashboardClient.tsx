@@ -72,8 +72,8 @@ function loadPreviewWorkspace(userId: string): WorkspaceData {
       const parsed = JSON.parse(saved) as WorkspaceData;
       return {
         ...parsed,
-        subjects: (Array.isArray(parsed.subjects) ? parsed.subjects : []).map(({ id, semesterId, name, code, requiredAttendance, color, archived, subjectType, internalMarks }) => ({
-          id, semesterId, name, code, requiredAttendance, color, archived, subjectType: subjectType ?? "theory", internalMarks: internalMarks ?? {},
+        subjects: (Array.isArray(parsed.subjects) ? parsed.subjects : []).map(({ id, semesterId, name, code, requiredAttendance, archived, subjectType, internalMarks }) => ({
+          id, semesterId, name, code, requiredAttendance, archived, subjectType: subjectType ?? "theory", internalMarks: internalMarks ?? {},
         })),
         timetable: Array.isArray(parsed.timetable) ? parsed.timetable : [],
       };
@@ -687,7 +687,7 @@ function SubjectsView({
       const health = getHealth(summary.percentage, subject.requiredAttendance);
       return <article className="card subject-card" key={subject.id}>
         <div className="subject-card-head">
-          <div className="subject-identity"><span className="subject-color" style={{ backgroundColor: subject.color }}/><div className="subject-name"><h3>{subject.name}</h3><p>{subject.code || "No subject code"}</p></div></div>
+          <div className="subject-identity"><div className="subject-name"><h3>{subject.name}</h3><p>{subject.code || "No subject code"}</p></div></div>
           <div className="subject-card-actions">
             <button className="icon-button" aria-label={`Edit ${subject.name}`} onClick={() => onEdit(subject)}><Icon name="edit" /></button>
             <button className="icon-button" aria-label={subject.archived ? `Restore ${subject.name}` : `Archive ${subject.name}`} onClick={() => onArchive(subject)}><Icon name={subject.archived ? "refresh" : "archive"} /></button>
@@ -792,7 +792,7 @@ function AttendanceView({
         const status = getRecordStatus(record);
         const health = status === "present" ? "safe" : status === "absent" ? "critical" : "watch";
         return <div className="history-row" key={record.id}>
-          <div className="history-subject"><span className="subject-color" style={{ backgroundColor: subject?.color ?? "#a8b8b1" }}/><strong>{subject?.name ?? "Archived subject"}</strong></div>
+          <div className="history-subject"><strong>{subject?.name ?? "Archived subject"}</strong></div>
           <span className="history-detail">{record.attended} of {record.periods} periods attended{record.note ? ` · ${record.note}` : ""}</span>
           <StatusPill health={health} text={status === "partial" ? "Partial" : status === "present" ? "Present" : "Absent"}/>
           <div className="history-actions"><button className="icon-button" aria-label={`Edit ${subject?.name ?? "class"} record`} onClick={() => onEdit(record)}><Icon name="edit"/></button><button className="icon-button" aria-label="Remove class record" onClick={() => onDelete(record)}><Icon name="trash"/></button></div>
@@ -839,7 +839,7 @@ function CalendarView({ subjects, records, onAdd, onWholeDay }: { subjects: Subj
       {selectedRecords.map((record) => {
         const subject = subjectById.get(record.subjectId);
         const status = getRecordStatus(record);
-        return <div className="calendar-record" key={record.id}><span className="subject-color" style={{ backgroundColor: subject?.color ?? "#a8b8b1" }}/><div><strong>{subject?.name ?? "Archived subject"}</strong><span>{record.attended} of {record.periods} periods attended</span></div><StatusPill health={status === "present" ? "safe" : status === "absent" ? "critical" : "watch"} text={status === "partial" ? "Partial" : status === "present" ? "Present" : "Absent"}/></div>;
+        return <div className="calendar-record" key={record.id}><div><strong>{subject?.name ?? "Archived subject"}</strong><span>{record.attended} of {record.periods} periods attended</span></div><StatusPill health={status === "present" ? "safe" : status === "absent" ? "critical" : "watch"} text={status === "partial" ? "Partial" : status === "present" ? "Present" : "Absent"}/></div>;
       })}
       <button className="button button-quiet calendar-add" onClick={() => onAdd(selectedDate)}><Icon name="plus"/>Log class on this day</button>
       <button className="button button-primary calendar-add-day" onClick={() => onWholeDay(selectedDate)}><Icon name="calendar"/>Mark whole day</button>
@@ -1044,7 +1044,7 @@ function TimetableView({
       cells.push(<td colSpan={span} key={`${column.kind}-${hour}`}>
         {editing ? <label className="timetable-slot-editor"><span className="sr-only">{day.label}, hour {hour}</span><select aria-label={`${day.label}, hour ${hour}`} value={subjectId} disabled={!activeSubjects.length} onChange={(event) => setSlot(day.weekday, hour, event.target.value, 1)}>
           <option value="">Free hour</option>{subjects.map((option) => <option value={option.id} key={option.id} disabled={option.archived}>{option.name}{option.archived ? " · archived" : ""}</option>)}
-        </select></label> : subject ? <div className={`timetable-subject-chip ${subject.archived ? "archived" : ""}`} style={{ borderLeftColor: subject.color }}><strong>{subject.name}</strong>{subject.code && <small>{subject.code}</small>}</div> : <div className="timetable-free-slot">Free</div>}
+        </select></label> : subject ? <div className={`timetable-subject-chip ${subject.archived ? "archived" : ""}`}><strong>{subject.name}</strong>{subject.code && <small>{subject.code}</small>}</div> : <div className="timetable-free-slot">Free</div>}
       </td>);
       index += span - 1;
     }
@@ -1270,7 +1270,7 @@ function ReportsView({ subjects, records, totals, target, subjectId, onSubjectCh
         {reportSubjects.map((subject) => {
           const summary = getSubjectTotals(records, subject.id);
           const health = getHealth(summary.percentage, subject.requiredAttendance);
-          return <tr key={subject.id}><td><span className="report-subject"><span className="subject-color" style={{ backgroundColor: subject.color }}/>{subject.name}</span></td><td>{summary.attended}</td><td>{summary.conducted}</td><td><strong>{formatPercentage(summary.percentage)}</strong></td><td>{subject.requiredAttendance}%</td><td><StatusPill health={health}/></td></tr>;
+          return <tr key={subject.id}><td><span className="report-subject">{subject.name}</span></td><td>{summary.attended}</td><td>{summary.conducted}</td><td><strong>{formatPercentage(summary.percentage)}</strong></td><td>{subject.requiredAttendance}%</td><td><StatusPill health={health}/></td></tr>;
         })}
       </tbody>{!selectedSubject && <tfoot><tr><td><strong>Overall · weighted</strong></td><td><strong>{totals.attended}</strong></td><td><strong>{totals.conducted}</strong></td><td><strong>{formatPercentage(totals.percentage)}</strong></td><td>{target}%</td><td><StatusPill health={getHealth(totals.percentage, target)}/></td></tr></tfoot>}</table></div> : <EmptyState title="Nothing to report yet" copy="Add subjects and class records to build your semester report."/>}
     </section>
@@ -1455,7 +1455,7 @@ function WholeDayAttendanceModal({ subjects, records, timetable, semesterId, ini
         <label className="field-label">Class date<input type="date" required value={date} onChange={(event) => setDate(event.target.value)}/></label>
         <section className="day-attendance-preview" aria-label="Saved timetable for selected day">
           <div className="day-attendance-preview-heading"><strong>{date ? `${formatDay(date)}, ${formatDate(date, { day: "numeric", month: "long", year: "numeric" })}` : "Selected day"}</strong><span>{totalPeriods} {totalPeriods === 1 ? "period" : "periods"}</span></div>
-          {scheduledSubjects.length ? <ul>{scheduledSubjects.map(({ subject, hours }) => <li key={subject.id}><span className="subject-color" style={{ backgroundColor: subject.color }}/><strong>{subject.name}</strong><span>{hours.length} {hours.length === 1 ? "period" : "periods"} · Hour{hours.length === 1 ? "" : "s"} {hours.join(", ")}</span></li>)}</ul> : <p>No saved timetable periods for this day. Fill and save the Attendly timetable before marking a whole day.</p>}
+          {scheduledSubjects.length ? <ul>{scheduledSubjects.map(({ subject, hours }) => <li key={subject.id}><strong>{subject.name}</strong><span>{hours.length} {hours.length === 1 ? "period" : "periods"} · Hour{hours.length === 1 ? "" : "s"} {hours.join(", ")}</span></li>)}</ul> : <p>No saved timetable periods for this day. Fill and save the Attendly timetable before marking a whole day.</p>}
         </section>
         {existingScheduledRecords.length > 0 && <p className="day-attendance-warning" role="status">Existing records for these scheduled subjects on this date will be updated to match the whole-day choice. Other subject records will stay unchanged.</p>}
         {scheduledSubjects.length > 0 && <p className="modal-helper">This creates one date-wise attendance record for each scheduled subject, using the number of periods in the timetable.</p>}
@@ -1464,8 +1464,6 @@ function WholeDayAttendanceModal({ subjects, records, timetable, semesterId, ini
     </section>
   </div>;
 }
-
-const subjectColors = ["#4f8f78", "#d38b55", "#7785c2", "#bc7186", "#5e9bad", "#8d9c58", "#9b79b3"];
 
 function SubjectModal({
   subject, semesterId, defaultTarget, onClose, onSave,
@@ -1476,7 +1474,6 @@ function SubjectModal({
   const [code, setCode] = useState(subject?.code ?? "");
   const [subjectType, setSubjectType] = useState<SubjectType>(subject?.subjectType ?? "theory");
   const required = subject?.requiredAttendance ?? Math.max(75, defaultTarget);
-  const color = subject?.color ?? subjectColors[0];
   const [error, setError] = useState("");
   const modalRef = useModalFocus(onClose);
 
@@ -1489,7 +1486,6 @@ function SubjectModal({
       name: name.trim(),
       code: code.trim(),
       requiredAttendance: required,
-      color,
       archived: subject?.archived ?? false,
       subjectType,
       internalMarks: subject?.subjectType === subjectType ? subject.internalMarks ?? {} : {},

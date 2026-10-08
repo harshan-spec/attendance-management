@@ -10,7 +10,6 @@ const sampleSubjects: Subject[] = [
     name: "Database Systems",
     code: "CS 301",
     requiredAttendance: 75,
-    color: "#4f8f78",
     archived: false,
   },
   {
@@ -19,7 +18,6 @@ const sampleSubjects: Subject[] = [
     name: "Computer Networks",
     code: "CS 304",
     requiredAttendance: 75,
-    color: "#d38b55",
     archived: false,
   },
   {
@@ -28,7 +26,6 @@ const sampleSubjects: Subject[] = [
     name: "Operating Systems",
     code: "CS 302",
     requiredAttendance: 75,
-    color: "#7785c2",
     archived: false,
   },
   {
@@ -37,7 +34,6 @@ const sampleSubjects: Subject[] = [
     name: "Data Structures",
     code: "CS 303",
     requiredAttendance: 75,
-    color: "#bc7186",
     archived: false,
   },
   {
@@ -46,7 +42,6 @@ const sampleSubjects: Subject[] = [
     name: "Discrete Mathematics",
     code: "MA 305",
     requiredAttendance: 75,
-    color: "#5e9bad",
     archived: false,
   },
 ];
