@@ -298,8 +298,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .internal-mark-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
 .internal-mark-field { display: grid; gap: 5px; color: var(--ink-soft); font-size: 11px; font-weight: 620; }
 .internal-mark-field small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.internal-mark-entry { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .internal-mark-field input { width: 100%; min-width: 0; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--panel-soft); font: inherit; font-size: 13px; }
+.internal-mark-field input:disabled { color: var(--muted); opacity: .8; }
 .internal-mark-field input:focus { outline: 2px solid var(--mint); border-color: var(--forest); }
+.internal-na-button { flex: 0 0 auto; min-width: 39px; height: 39px; padding: 0 8px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--panel-soft); font: inherit; font-size: 10px; font-weight: 680; cursor: pointer; }
+.internal-na-button:hover, .internal-na-button.active { border-color: var(--forest); color: var(--forest); background: rgba(79,143,120,.12); }
+.internal-na-button:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 .internal-result-note { margin: 13px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .subject-card { position: relative; overflow: hidden; padding: 19px; }
 .subject-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }

@@ -332,10 +332,14 @@ export function DashboardClient() {
     setDialog(null);
     notify(dialog?.kind === "subject" && dialog.subject ? "Subject details saved." : "Subject added to this semester.");
   }
-  function updateInternalMark(subjectId: string, key: InternalMarkKey, value: number | null) {
-    updateData((current) => ({ ...current, subjects: current.subjects.map((subject) => subject.id === subjectId
-      ? { ...subject, internalMarks: { ...(subject.internalMarks ?? {}), [key]: value } }
-      : subject) }));
+  function updateInternalMark(subjectId: string, key: InternalMarkKey, value: number | null | undefined) {
+    updateData((current) => ({ ...current, subjects: current.subjects.map((subject) => {
+      if (subject.id !== subjectId) return subject;
+      const internalMarks = { ...(subject.internalMarks ?? {}) };
+      if (value === undefined) delete internalMarks[key];
+      else internalMarks[key] = value;
+      return { ...subject, internalMarks };
+    }) }));
   }
   function saveSemester(semester: Semester) {
     updateData((current) => ({ ...current, semesters: [...current.semesters, semester], activeSemesterId: semester.id }));
@@ -698,7 +702,7 @@ function SubjectsView({
   </>;
 }
 
-function InternalMarksView({ subjects, onChange, onAddSubject }: { subjects: Subject[]; onChange: (subjectId: string, key: InternalMarkKey, value: number | null) => void; onAddSubject: () => void }) {
+function InternalMarksView({ subjects, onChange, onAddSubject }: { subjects: Subject[]; onChange: (subjectId: string, key: InternalMarkKey, value: number | null | undefined) => void; onAddSubject: () => void }) {
   const results = subjects.map((subject) => ({ subject, result: calculateInternal(subject.subjectType ?? "theory", subject.internalMarks ?? {}) })).filter(({ result }) => result.entered > 0);
   const average = results.length ? results.reduce((sum, entry) => sum + (entry.result.percentage ?? 0), 0) / results.length : null;
   const completed = results.filter(({ result }) => result.complete).length;
@@ -717,9 +721,17 @@ function InternalMarksView({ subjects, onChange, onAddSubject }: { subjects: Sub
         <div className="internal-subject-heading"><div><span className="internal-subject-type">{typeLabel}</span><h2>{subject.name}</h2>{subject.code && <p>{subject.code}</p>}</div><div className={`internal-result-pill ${result.complete ? result.passed ? "passed" : "failed" : result.entered ? "provisional" : "empty"}`}><strong>{result.score === null ? "—" : `${result.score.toFixed(2)} / ${result.maximum}`}</strong><span>{result.complete ? result.passed ? "Pass" : "Below pass mark" : result.entered ? "Provisional" : "No marks"}</span></div></div>
         <div className="internal-mark-grid">{markKeysForType(type).map((key) => {
           const labels: Record<InternalMarkKey, string> = { cat1: "CAT 1", assignment1: "Assignment 1", cat2: "CAT 2", assignment2: "Assignment 2", cat3: "CAT 3", assignment3: "Assignment 3", model: "Model exam" };
-          return <label className="internal-mark-field" key={key}><span>{labels[key]} <small>/ {markLimit(key)}</small></span><input aria-label={`${subject.name} ${labels[key]}`} type="number" min="0" max={markLimit(key)} step="0.01" inputMode="decimal" placeholder="—" value={marks[key] ?? ""} onChange={(event) => { const raw = event.target.value; const next = raw === "" ? null : Number(raw); if (next === null || (Number.isFinite(next) && next >= 0 && next <= markLimit(key))) onChange(subject.id, key, next); }}/></label>;
+          const fieldId = `internal-${subject.id}-${key}`;
+          const notApplicable = marks[key] === null;
+          return <div className="internal-mark-field" key={key}>
+            <label htmlFor={fieldId}>{labels[key]} <small>/ {markLimit(key)}</small></label>
+            <div className="internal-mark-entry">
+              <input id={fieldId} aria-label={`${subject.name} ${labels[key]}`} type="number" min="0" max={markLimit(key)} step="0.01" inputMode="decimal" placeholder={notApplicable ? "N/A" : "—"} value={typeof marks[key] === "number" ? marks[key] : ""} disabled={notApplicable} onChange={(event) => { const raw = event.target.value; const next = raw === "" ? undefined : Number(raw); if (next === undefined || (Number.isFinite(next) && next >= 0 && next <= markLimit(key))) onChange(subject.id, key, next); }}/>
+              <button className={`internal-na-button ${notApplicable ? "active" : ""}`} type="button" aria-label={`${subject.name} ${labels[key]} ${notApplicable ? "remove N/A" : "mark N/A"}`} aria-pressed={notApplicable} onClick={() => onChange(subject.id, key, notApplicable ? undefined : null)}>{notApplicable ? "Undo" : "N/A"}</button>
+            </div>
+          </div>;
         })}</div>
-        <p className="internal-result-note">{result.complete ? `Pass mark: ${result.passMark} / ${result.maximum}.` : `Pass mark: ${result.passMark} / ${result.maximum}. ${result.entered ? "Partial score is provisional; blank marks count as zero until entered." : "Enter marks to calculate the score."}`}</p>
+        <p className="internal-result-note">{result.complete ? `Pass mark: ${result.passMark} / ${result.maximum}. N/A assessments count as zero.` : `Pass mark: ${result.passMark} / ${result.maximum}. ${result.entered ? "Partial score is provisional; enter pending marks or mark non-applicable items N/A." : "Enter marks, and mark non-applicable items N/A."}`}</p>
       </section>;
     })}</div>
   </>;

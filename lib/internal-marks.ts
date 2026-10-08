@@ -41,6 +41,6 @@ export function calculateInternal(type: SubjectType, marks: InternalMarks = {}) 
     maximum = 60;
     passMark = 30;
   }
-  const complete = entered === keys.length;
+  const complete = keys.every((key) => typeof marks[key] === "number" || marks[key] === null);
   return { score, maximum, percentage: score / maximum * 100, passMark, complete, entered, totalInputs: keys.length, passed: complete ? score >= passMark : null };
 }
