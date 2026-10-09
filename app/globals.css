@@ -519,7 +519,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .setting-select { min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); }
 .settings-note { margin-top: 14px; padding: 13px; border-radius: 9px; color: #5f756c; background: var(--mint-soft); font-size: 11px; line-height: 1.5; }
 .settings-save { display: flex; width: fit-content; max-width: 100%; margin-top: 18px; }
-.toast { position: fixed; right: 26px; bottom: 26px; z-index: 90; max-width: min(380px, calc(100vw - 32px)); padding: 12px 16px; border: 1px solid #cce4d7; border-radius: 10px; color: #265d49; background: #f0faf3; box-shadow: 0 12px 32px rgba(30, 66, 54, .13); font-size: 13px; font-weight: 580; animation: toast-in .22s ease both; }
+.toast { position: fixed; right: 26px; bottom: 26px; z-index: 90; display: flex; align-items: center; justify-content: space-between; gap: 14px; max-width: min(420px, calc(100vw - 32px)); padding: 12px 16px; border: 1px solid #cce4d7; border-radius: 10px; color: #265d49; background: #f0faf3; box-shadow: 0 12px 32px rgba(30, 66, 54, .13); font-size: 13px; font-weight: 580; animation: toast-in .22s ease both; }
+.toast-message { min-width: 0; }
+.toast-action { min-height: 34px; flex: 0 0 auto; padding: 0 12px; border: 1px solid #a9cfba; border-radius: 7px; color: #1e5947; background: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.toast-action:hover { background: #e4f4e9; }
+.toast-action:focus-visible { outline: 3px solid #66a88c; outline-offset: 2px; }
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 /* Dialogs */

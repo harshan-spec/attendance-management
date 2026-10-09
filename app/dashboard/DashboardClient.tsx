@@ -27,6 +27,16 @@ type DialogState =
   | { kind: "delete-account" }
   | null;
 
+type WholeDayUndo = {
+  userId: string;
+  date: string;
+  subjectIds: string[];
+  previousRecords: AttendanceRecord[];
+  appliedRecords: AttendanceRecord[];
+};
+
+type ToastNotice = { id: number; message: string; undoable?: boolean };
+
 const viewMeta: Record<ViewKey, { title: string; subtitle: string; icon: IconName }> = {
   overview: { title: "Overview", subtitle: "A clear picture of where you stand this semester.", icon: "home" },
   subjects: { title: "Your subjects", subtitle: "Keep every subject above its 75% attendance floor.", icon: "book" },
@@ -84,6 +94,16 @@ function loadPreviewWorkspace(userId: string): WorkspaceData {
   return createSampleWorkspace();
 }
 
+function sameAttendanceRecords(left: AttendanceRecord[], right: AttendanceRecord[]) {
+  if (left.length !== right.length) return false;
+  const recordsById = new Map(right.map((record) => [record.id, record]));
+  return left.every((record) => {
+    const other = recordsById.get(record.id);
+    return Boolean(other && other.subjectId === record.subjectId && other.date === record.date &&
+      other.periods === record.periods && other.attended === record.attended && (other.note ?? "") === (record.note ?? ""));
+  });
+}
+
 export function DashboardClient() {
   const router = useRouter();
   const { user, ready, signOut, enterPreview, deleteAccount: removeAccount } = useAttendlyAuth();
@@ -97,7 +117,7 @@ export function DashboardClient() {
   const [view, setView] = useState<ViewKey>("overview");
   const [reportSubjectId, setReportSubjectId] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<ToastNotice | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -105,6 +125,8 @@ export function DashboardClient() {
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveRevisionRef = useRef(0);
   const lastSavedWorkspaceRef = useRef({ userId: "", serialized: "" });
+  const toastIdRef = useRef(0);
+  const wholeDayUndoRef = useRef<WholeDayUndo | null>(null);
 
   useEffect(() => {
     saveRevisionRef.current += 1;
@@ -197,7 +219,10 @@ export function DashboardClient() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 3000);
+    const timer = window.setTimeout(() => {
+      if (toast.undoable) wholeDayUndoRef.current = null;
+      setToast((current) => current?.id === toast.id ? null : current);
+    }, toast.undoable ? 15_000 : 3_000);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -225,7 +250,14 @@ export function DashboardClient() {
     return summary.percentage !== null && summary.percentage < subject.requiredAttendance;
   });
 
-  function notify(message: string) { setToast(message); }
+  function notify(message: string) {
+    wholeDayUndoRef.current = null;
+    setToast({ id: ++toastIdRef.current, message });
+  }
+  function notifyUndoable(message: string, action: WholeDayUndo) {
+    wholeDayUndoRef.current = action;
+    setToast({ id: ++toastIdRef.current, message, undoable: true });
+  }
   function updateData(change: (current: WorkspaceData) => WorkspaceData) {
     setData((current) => current ? change(current) : current);
   }
@@ -301,31 +333,59 @@ export function DashboardClient() {
     }
     const scheduledPeriods = new Map([...scheduledHours].map(([subjectId, hours]) => [subjectId, hours.size]));
 
+    const subjectIds = [...scheduledPeriods.keys()];
+    const affectedSubjectIds = new Set(subjectIds);
+    const previousRecords = data.records.filter((record) => record.date === date && affectedSubjectIds.has(record.subjectId));
+    const replacements: AttendanceRecord[] = Array.from(scheduledPeriods, ([subjectId, periods]) => {
+      const matches = previousRecords.filter((record) => record.subjectId === subjectId);
+      const retainedNotes = [...new Set(matches.map((record) => record.note?.trim()).filter((note): note is string => Boolean(note)))];
+      const note = retainedNotes.length ? retainedNotes.join(" · ").slice(0, 140) : matches.length ? undefined : "Whole-day timetable mark";
+      return {
+        id: matches[0]?.id ?? createId(),
+        subjectId,
+        date,
+        periods,
+        attended: status === "present" ? periods : 0,
+        ...(note ? { note } : {}),
+      };
+    });
+
     updateData((current) => {
-      const subjectIds = new Set(scheduledPeriods.keys());
-      const existingForDay = current.records.filter((record) => record.date === date && subjectIds.has(record.subjectId));
-      const replacements: AttendanceRecord[] = Array.from(scheduledPeriods, ([subjectId, periods]) => {
-        const matches = existingForDay.filter((record) => record.subjectId === subjectId);
-        const retainedNotes = [...new Set(matches.map((record) => record.note?.trim()).filter((note): note is string => Boolean(note)))];
-        const note = retainedNotes.length ? retainedNotes.join(" · ").slice(0, 140) : matches.length ? undefined : "Whole-day timetable mark";
-        return {
-          id: matches[0]?.id ?? createId(),
-          subjectId,
-          date,
-          periods,
-          attended: status === "present" ? periods : 0,
-          ...(note ? { note } : {}),
-        };
-      });
       return {
         ...current,
-        records: [...current.records.filter((record) => record.date !== date || !subjectIds.has(record.subjectId)), ...replacements],
+        records: [...current.records.filter((record) => record.date !== date || !affectedSubjectIds.has(record.subjectId)), ...replacements],
       };
     });
 
     const totalPeriods = [...scheduledPeriods.values()].reduce((sum, periods) => sum + periods, 0);
-    notify(`Marked ${totalPeriods} scheduled ${totalPeriods === 1 ? "period" : "periods"} across ${scheduledPeriods.size} ${scheduledPeriods.size === 1 ? "subject" : "subjects"} ${status} for ${formatDay(date)}, ${formatDate(date)}.`);
+    notifyUndoable(
+      `Marked ${totalPeriods} scheduled ${totalPeriods === 1 ? "period" : "periods"} across ${scheduledPeriods.size} ${scheduledPeriods.size === 1 ? "subject" : "subjects"} ${status} for ${formatDay(date)}, ${formatDate(date)}.`,
+      { userId, date, subjectIds, previousRecords, appliedRecords: replacements },
+    );
     setDialog(null);
+  }
+  function undoLastWholeDayAttendance() {
+    const action = wholeDayUndoRef.current;
+    if (!action || !data || action.userId !== userId) {
+      notify("This whole-day mark can no longer be undone.");
+      return;
+    }
+
+    const subjectIds = new Set(action.subjectIds);
+    const currentAffectedRecords = data.records.filter((record) => record.date === action.date && subjectIds.has(record.subjectId));
+    if (!sameAttendanceRecords(currentAffectedRecords, action.appliedRecords)) {
+      notify("These attendance records have changed, so this mark can no longer be undone.");
+      return;
+    }
+
+    updateData((current) => ({
+      ...current,
+      records: [
+        ...current.records.filter((record) => record.date !== action.date || !subjectIds.has(record.subjectId)),
+        ...action.previousRecords,
+      ],
+    }));
+    notify("Whole-day attendance undone. Syncing your workspace.");
   }
   function saveSubject(subject: Subject) {
     updateData((current) => ({
@@ -568,7 +628,7 @@ export function DashboardClient() {
       {dialog?.kind === "archive-subject" && <ConfirmModal title={dialog.subject.archived ? "Restore this subject?" : "Archive this subject?"} copy={dialog.subject.archived ? "The subject will appear in your active subject list again." : "The subject’s history will stay saved, but it will leave your active dashboard totals."} action={dialog.subject.archived ? "Restore subject" : "Archive subject"} onClose={() => setDialog(null)} onConfirm={() => toggleArchive(dialog.subject)} />}
       {dialog?.kind === "archive-semester" && <ConfirmModal title={dialog.semester.archived ? "Restore this semester?" : "Archive this semester?"} copy={dialog.semester.archived ? "This semester and its saved subjects, timetable, and attendance history will be available again." : "This semester will leave your active workspace. Its subjects, timetable, and attendance history will stay saved."} action={dialog.semester.archived ? "Restore semester" : "Archive semester"} onClose={() => setDialog(null)} onConfirm={() => toggleArchiveSemester(dialog.semester)} />}
       {dialog?.kind === "delete-account" && !user.isPreview && <DeleteAccountModal onClose={() => setDialog(null)} onConfirm={handleAccountDeletion} />}
-      {toast && <div className="toast" role="status">{toast}</div>}
+      {toast && <div className={`toast${toast.undoable ? " toast-with-action" : ""}`} role="status"><span className="toast-message">{toast.message}</span>{toast.undoable && <button type="button" className="toast-action" onClick={undoLastWholeDayAttendance}>Undo</button>}</div>}
     </div>
   );
 }
