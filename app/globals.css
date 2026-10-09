@@ -140,6 +140,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .sidebar .brand-mark { background: #b9e7d2; }
 .sidebar-label { margin: 0 11px 10px; color: #82999b; font-size: 10px; font-weight: 760; letter-spacing: .15em; }
 .side-nav { display: grid; gap: 4px; }
+.mobile-more-trigger, .mobile-more-menu { display: none; }
 .side-link { min-height: 43px; display: flex; align-items: center; gap: 12px; padding: 0 11px; border-radius: 8px; color: #a7b8b8; background: transparent; cursor: pointer; text-align: left; font-size: 13px; font-weight: 570; transition: background .15s ease, color .15s ease; }
 .side-link:hover { color: #f4f8f6; background: rgba(255,255,255,.07); }
 .side-link.active { color: #f4faf6; background: rgba(188, 231, 211, .13); box-shadow: inset 2px 0 #bde9d4; }
@@ -416,7 +417,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .timetable-heading p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
 .timetable-actions { display: flex; align-items: center; gap: 7px; }
 .timetable-empty-subjects { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 13px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--panel-soft); font-size: 11px; }
-.timetable-scroll { overflow-x: auto; }
+.timetable-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
+.timetable-scroll:focus-visible { outline: 2px solid var(--mint); outline-offset: -2px; }
 .timetable-table { width: 100%; min-width: 1050px; table-layout: fixed; border-collapse: separate; border-spacing: 6px 6px; }
 .timetable-table th { color: var(--muted); font-size: 10px; font-weight: 650; text-align: center; }
 .timetable-table thead th { height: 38px; border-bottom: 1px solid var(--line); }
@@ -480,7 +482,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .formula-line { display: flex; justify-content: space-between; gap: 12px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; }
 .formula-line code { color: #316b59; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; text-align: right; }
 .app-shell[data-theme="dark"] .formula-line code { color: #b6e3ce; }
-.report-table-wrap { overflow-x: auto; }
+.report-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
+.report-table-wrap:focus-visible { outline: 2px solid var(--mint); outline-offset: -2px; }
 .report-table { width: 100%; border-collapse: collapse; text-align: left; }
 .report-table th { padding: 11px 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; font-weight: 740; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
 .report-table td { padding: 14px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
@@ -745,6 +748,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .page-heading-overview .overview-heading-actions .button svg { width: 15px; height: 15px; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .overall-card { grid-column: 1 / -1; }
+  .metric-grid > .metric-card:last-child { grid-column: 1 / -1; }
   .metric-card { min-height: 108px; }
   .metric-value { font-size: 24px; }
   .overall-card .target-caption { width: 76px; flex-basis: 76px; padding-left: 12px; font-size: 10px; }
@@ -857,6 +861,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 @media (max-width: 760px) {
   .side-link[data-mobile-hide="true"] { display: none; }
+  .mobile-more-trigger { display: flex; }
+  .mobile-more-menu { position: absolute; right: 12px; bottom: calc(100% + 9px); left: 12px; z-index: 25; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; max-height: min(60dvh, 440px); overflow-y: auto; padding: 12px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--panel); box-shadow: 0 14px 36px rgba(16, 38, 38, .2); scrollbar-width: thin; }
+  .mobile-more-menu[hidden] { display: none; }
+  .mobile-more-menu .side-link { min-width: 0; min-height: 68px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 7px 3px; border: 1px solid var(--line); color: var(--ink-soft); background: var(--panel-soft); font-size: 10px; text-align: center; white-space: normal; }
+  .mobile-more-menu .side-link .nav-icon { color: var(--forest); }
+  .mobile-more-menu .side-link.active { color: var(--forest); background: var(--mint-soft); box-shadow: inset 0 0 0 1px var(--forest); }
+  .mobile-more-menu .side-link.active .nav-icon { color: var(--forest); }
   .topbar-log-button { width: 38px; min-width: 38px; padding: 0; }
   .topbar-log-label, .account-trigger-name { display: none; }
   .account-trigger { width: 38px; justify-content: center; padding: 0; }
@@ -879,6 +890,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .day-attendance-modal .day-attendance-preview { padding: 10px 12px; }
   .day-attendance-modal .day-attendance-preview ul { margin-top: 7px; }
   .day-attendance-modal .day-attendance-preview li { padding: 6px 0; }
+  .modal-actions:not(.day-attendance-actions) { align-items: stretch; flex-direction: column; }
+  .modal-actions:not(.day-attendance-actions) .button { width: 100%; }
   .date-filter-label { flex: 1; justify-content: space-between; }
   .date-filter-label .filter-input { min-width: 0; width: 136px; }
   .semester-row { padding: 13px; }
@@ -900,6 +913,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .settings-field { grid-template-columns: minmax(0,1fr) 78px; gap: 9px; }
   .settings-field input { width: 78px; }
   .report-summary-card span { min-height: 31px; font-size: 10px; line-height: 1.35; }
+  .report-summary { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .report-summary > :last-child { grid-column: 1 / -1; }
   .today-class-row { grid-template-columns: minmax(0,1fr) minmax(76px, auto); gap: 6px; }
   .today-class-row .status-pill { padding: 4px 7px; font-size: 9px; }
   .semester-row { align-items: flex-start; }

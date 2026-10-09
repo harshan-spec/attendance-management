@@ -45,9 +45,9 @@ const navItems: { key: ViewKey; label: string; icon: IconName; mobileHide?: bool
   { key: "subjects", label: "Subjects", icon: "book" },
   { key: "attendance", label: "Attendance", icon: "clock" },
   { key: "calendar", label: "Calendar", icon: "calendar" },
-  { key: "timetable", label: "Timetable", icon: "book-open" },
+  { key: "timetable", label: "Timetable", icon: "book-open", mobileHide: true },
   { key: "internals", label: "Internals", icon: "chart", mobileHide: true },
-  { key: "planner", label: "Planner", icon: "target" },
+  { key: "planner", label: "Planner", icon: "target", mobileHide: true },
   { key: "reports", label: "Reports", icon: "chart", mobileHide: true },
   { key: "semesters", label: "Semesters", icon: "layers", mobileHide: true },
   { key: "settings", label: "Settings", icon: "settings", mobileHide: true },
@@ -99,6 +99,7 @@ export function DashboardClient() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [toast, setToast] = useState("");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -199,6 +200,10 @@ export function DashboardClient() {
     const timer = window.setTimeout(() => setToast(""), 3000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    setMobileMoreOpen(false);
+  }, [view]);
 
   const activeSemester = data?.semesters.find((semester) => semester.id === data.activeSemesterId && !semester.archived)
     ?? data?.semesters.find((semester) => !semester.archived)
@@ -474,7 +479,23 @@ export function DashboardClient() {
               <span className="nav-icon"><Icon name={item.icon} /></span><span>{item.label}</span>
             </button>
           ))}
+          <button
+            className={`side-link mobile-more-trigger ${navItems.some((item) => item.mobileHide && item.key === view) ? "active" : ""}`}
+            type="button"
+            aria-expanded={mobileMoreOpen}
+            aria-controls="mobile-more-menu"
+            onClick={() => { setMobileMoreOpen((open) => !open); setAccountMenuOpen(false); }}
+          >
+            <span className="nav-icon"><Icon name="more" /></span><span>More</span>
+          </button>
         </nav>
+        <div className="mobile-more-menu" id="mobile-more-menu" hidden={!mobileMoreOpen} role="group" aria-label="More workspace sections">
+          {navItems.filter((item) => item.mobileHide).map((item) => (
+            <button key={item.key} className={`side-link ${view === item.key ? "active" : ""}`} onClick={() => { setView(item.key); setAccountMenuOpen(false); }} aria-current={view === item.key ? "page" : undefined}>
+              <span className="nav-icon"><Icon name={item.icon} /></span><span>{item.label}</span>
+            </button>
+          ))}
+        </div>
         <div className="side-spacer" />
         <div className="sidebar-semester">
           <label htmlFor="active-semester">ACTIVE SEMESTER</label>
@@ -495,7 +516,7 @@ export function DashboardClient() {
         <header className="topbar">
           <div className="topbar-left"><span className="topbar-title">Attendly</span><span className="topbar-period"><Icon name="calendar" />{activeSemester?.name ?? "No semester"}</span>{!user.isPreview && <button type="button" className={`sync-indicator ${saveStatus}`} onClick={saveStatus === "error" ? retryWorkspaceSave : undefined} aria-live="polite" title={saveStatus === "error" ? "Retry syncing changes" : undefined}><span className="status-dot"/><span className="sync-indicator-label">{saveStatus === "saving" ? "Saving" : saveStatus === "error" ? "Retry sync" : "Saved"}</span></button>}</div>
           <div className="topbar-actions">
-            {view !== "overview" && <button className="button button-quiet topbar-log-button" onClick={() => openAttendance()}><Icon name="plus" /><span className="topbar-log-label">Mark attendance</span></button>}
+            {view !== "overview" && <button className="button button-quiet topbar-log-button" aria-label="Mark attendance" title="Mark attendance" onClick={() => openAttendance()}><Icon name="plus" /><span className="topbar-log-label">Mark attendance</span></button>}
             <div className="account-menu-anchor">
               <button className="button button-quiet account-trigger" onClick={() => setAccountMenuOpen((open) => !open)} aria-expanded={accountMenuOpen} aria-label="Open account menu"><span className="avatar topbar-avatar">{initials(user.name)}</span><span className="account-trigger-name">{user.name.split(" ")[0]}</span><Icon name="more" /></button>
               {accountMenuOpen && <div className="account-menu">
@@ -1089,7 +1110,7 @@ function TimetableView({
     </div>
     <div className="timetable-manual-callout" role="note"><Icon name="calendar"/><div><strong>{activeEntries.length ? "Keep your Attendly timetable up to date" : "Fill this timetable manually"}</strong><p>The college PDF is only a reference and does not fill this schedule automatically. Whole-day attendance uses the subjects saved in this weekly timetable.</p></div></div>
     {!activeSubjects.length && <div className="timetable-empty-subjects"><span>Add subjects before filling out your weekly schedule.</span><button className="text-link" onClick={onAddSubject}><Icon name="plus"/>Add a subject</button></div>}
-    <div className="timetable-scroll">
+    <div className="timetable-scroll" tabIndex={0} aria-label="Weekly timetable. Scroll horizontally to view all hours and breaks.">
       <table className="timetable-table">
         <colgroup><col className="timetable-day-column"/>{columns.map((column, index) => <col className={column.kind === "break" ? "timetable-break-column" : "timetable-hour-slot-column"} key={`${column.kind}-${index}`}/>)}</colgroup>
         <thead><tr><th className="timetable-day-heading" scope="col">Day</th>{columns.map((column, index) => <th className={column.kind === "break" ? `timetable-break-heading ${column.label.toLowerCase()}` : "timetable-hour-heading"} scope="col" key={`${column.kind}-${index}`}>{column.kind === "hour" ? <>Hour <span>{column.hour}</span></> : column.label}</th>)}</tr></thead>
@@ -1266,7 +1287,7 @@ function ReportsView({ subjects, records, totals, target, subjectId, onSubjectCh
     </div>
     <section className="card report-card">
       <div className="report-heading"><div><h2>{selectedSubject ? `${selectedSubject.name} report` : "Subject summary"}</h2><p>Calculated from all date-wise class records</p></div><button className="button button-quiet" onClick={onExport}><Icon name="download"/>Download CSV</button></div>
-      {subjects.length ? <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Subject</th><th>Attended</th><th>Conducted</th><th>Attendance</th><th>Required</th><th>Standing</th></tr></thead><tbody>
+      {subjects.length ? <div className="report-table-wrap" tabIndex={0} aria-label="Subject attendance report. Scroll horizontally to view all columns."><table className="report-table"><thead><tr><th>Subject</th><th>Attended</th><th>Conducted</th><th>Attendance</th><th>Required</th><th>Standing</th></tr></thead><tbody>
         {reportSubjects.map((subject) => {
           const summary = getSubjectTotals(records, subject.id);
           const health = getHealth(summary.percentage, subject.requiredAttendance);
@@ -1276,7 +1297,7 @@ function ReportsView({ subjects, records, totals, target, subjectId, onSubjectCh
     </section>
     {selectedSubject && <section className="card report-card report-history">
       <div className="report-heading"><div><h2>Date-wise attendance</h2><p>Class records for {selectedSubject.name}</p></div></div>
-      {records.some((record) => record.subjectId === selectedSubject.id) ? <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Date</th><th>Day</th><th>Attended</th><th>Conducted</th><th>Status</th></tr></thead><tbody>{records.filter((record) => record.subjectId === selectedSubject.id).sort((a, b) => b.date.localeCompare(a.date)).map((record) => <tr key={record.id}><td>{formatDate(record.date)}</td><td>{formatDay(record.date)}</td><td>{record.attended}</td><td>{record.periods}</td><td>{getRecordStatus(record)}</td></tr>)}</tbody></table></div> : <EmptyState title="No class records yet" copy="Mark attendance for this subject to see its date-wise report."/>}
+      {records.some((record) => record.subjectId === selectedSubject.id) ? <div className="report-table-wrap" tabIndex={0} aria-label="Date-wise attendance report. Scroll horizontally to view all columns."><table className="report-table"><thead><tr><th>Date</th><th>Day</th><th>Attended</th><th>Conducted</th><th>Status</th></tr></thead><tbody>{records.filter((record) => record.subjectId === selectedSubject.id).sort((a, b) => b.date.localeCompare(a.date)).map((record) => <tr key={record.id}><td>{formatDate(record.date)}</td><td>{formatDay(record.date)}</td><td>{record.attended}</td><td>{record.periods}</td><td>{getRecordStatus(record)}</td></tr>)}</tbody></table></div> : <EmptyState title="No class records yet" copy="Mark attendance for this subject to see its date-wise report."/>}
     </section>}
     <section className="report-note"><Icon name="target"/><p>Overall attendance is calculated as total periods attended divided by total periods conducted. Subject percentages are shown individually and are not averaged to make the overall figure.</p></section>
   </>;
