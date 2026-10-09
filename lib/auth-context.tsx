@@ -172,6 +172,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (error) throw error;
+
+    // With email confirmation enabled, Supabase can return a placeholder user
+    // for a duplicate email instead of an error. It has no identities and must
+    // never be treated as a new signup or trigger the confirmation message.
+    if (!data.user || data.user.identities?.length === 0) {
+      throw new Error("An account already exists for this email. Sign in or reset its password.");
+    }
+
     if (data.session) setUser(mapSupabaseUser(data.session.user));
     return !data.session;
   }, []);
