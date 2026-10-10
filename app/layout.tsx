@@ -5,6 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://attendance-management-beta-flax.vercel.app"),
+  referrer: "strict-origin-when-cross-origin",
   title: {
     default: "Attendly — Attendance, in focus",
     template: "%s | Attendly",

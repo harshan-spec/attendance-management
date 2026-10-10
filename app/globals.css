@@ -579,6 +579,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .calculator-explainer p { margin: 7px 0; color: var(--ink-soft); font-size: 13px; line-height: 1.65; }
 .calculator-formula { display: flex; justify-content: center; align-items: center; gap: 9px; margin: 16px 0; padding: 15px; border: 1px solid var(--line); border-radius: 10px; color: #295e4e; background: #f8fbf9; font-size: 13px; font-weight: 600; }
 .calculator-formula span { padding: 5px 8px; border-radius: 6px; background: #eaf4ee; }
+.calculator-guide { margin-top: 18px; padding: clamp(17px, 3vw, 23px); }
+.calculator-guide h2 { margin: 0 0 13px; color: #223b3c; font-size: 17px; font-weight: 660; }
+.calculator-steps { display: grid; gap: 12px; margin: 0; padding-left: 23px; color: #31584c; }
+.calculator-steps li { padding-left: 3px; }
+.calculator-steps li::marker { font-size: 12px; font-weight: 700; }
+.calculator-steps strong { color: #294a41; font-size: 13px; }
+.calculator-steps p { margin: 4px 0 0; color: #667a76; font-size: 12px; line-height: 1.65; }
+.calculator-overall-example { margin-top: 18px; padding: 15px 16px; border-left: 3px solid #72a68d; border-radius: 0 9px 9px 0; background: #f1f7f3; }
+.calculator-overall-example h3 { margin: 0 0 5px; color: #294a41; font-size: 13px; font-weight: 660; }
+.calculator-overall-example p, .calculator-disclaimer { margin: 0; color: #667a76; font-size: 12px; line-height: 1.65; }
+.calculator-disclaimer { margin-top: 16px; }
 .calculator-faq { margin-top: 24px; }
 .calculator-ad { width: 100%; min-width: 0; margin: 28px 0; padding-top: 12px; border-top: 1px solid #e2eae6; }
 .calculator-ad[hidden] { display: none; }
@@ -767,6 +778,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .planner-result { flex-basis: 100%; }
   .planner-current { grid-column: auto; }
   .calculator-header nav a:first-child { display: none; }
+  .calculator-guide { padding: 16px; }
   .calculator-result { align-items: flex-start; padding: 15px; }
   .calculator-result strong { font-size: 29px; }
   .calculator-formula { flex-wrap: wrap; font-size: 11px; }

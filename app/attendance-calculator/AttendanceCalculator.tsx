@@ -64,14 +64,28 @@ export function AttendanceCalculator() {
         <div className="calculator-formula"><span>Periods attended</span><b>÷</b><span>Periods conducted</span><b>× 100</b><b>=</b><span>{formatPercentage(percentage)}</span></div>
         <p>For example, 42 attended periods out of 50 conducted periods gives you 84.00% attendance. Count each period, including multi-period practicals, in both totals.</p>
       </section>
+      <section className="card calculator-guide" aria-labelledby="calculator-guide-title">
+        <h2 id="calculator-guide-title">Use the right totals for your calculation</h2>
+        <ol className="calculator-steps">
+          <li><strong>For one subject</strong><p>Enter the periods attended and conducted for that subject only. This gives that subject’s percentage.</p></li>
+          <li><strong>For overall attendance</strong><p>Add attended periods across all subjects and enter that total, then add all conducted periods and enter that total. Count periods rather than class days so longer practicals are weighted correctly.</p></li>
+          <li><strong>Set your applicable target</strong><p>Attendly uses 80% overall and 75% per subject as its default targets. College rules can differ, so enter the threshold that applies to you.</p></li>
+        </ol>
+        <div className="calculator-overall-example">
+          <h3>Why overall attendance is not an average of subject percentages</h3>
+          <p>If Subject A is 18 of 20 periods (90%) and Subject B is 5 of 10 (50%), overall attendance is 23 ÷ 30 = 76.67%. Averaging 90% and 50% would give 70%, which gives both subjects equal weight despite different numbers of conducted periods.</p>
+        </div>
+        <p className="calculator-disclaimer">Attendly is an independent planning tool, not your college’s official attendance record. Check important totals and eligibility with your institution.</p>
+      </section>
       <CalculatorAd />
       <section className="calculator-faq" aria-labelledby="calculator-faq-title">
         <h2 id="calculator-faq-title">A few useful details</h2>
         <details><summary>How is overall attendance different?</summary><p>Overall attendance uses the sum of attended periods across all subjects divided by the sum of conducted periods. It is not the average of your subject percentages.</p></details>
         <details><summary>What does 0 conducted periods mean?</summary><p>No percentage can be calculated until at least one class period has been conducted. Attendly shows “No attendance recorded” instead of treating 0 ÷ 0 as a percentage.</p></details>
         <details><summary>Can I track attendance by day?</summary><p>Yes. In your Attendly dashboard, each class record includes its date, day, subject, period count, and present or absent status.</p></details>
+        <details><summary>Are my calculator entries saved?</summary><p>No. The public calculator works in your browser and does not save the numbers you enter. Sign in to Attendly to record attendance in a personal workspace.</p></details>
       </section>
     </main>
-    <footer className="calculator-footer"><span>Attendly · Built for clearer semesters</span><PublicLegalLinks /></footer>
+    <footer className="calculator-footer"><span>Attendly · Built for clearer semesters</span><PublicLegalLinks includePrivacy /></footer>
   </div>;
 }

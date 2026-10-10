@@ -3,7 +3,7 @@ import { AttendanceCalculator } from "@/app/attendance-calculator/AttendanceCalc
 
 export const metadata: Metadata = {
   title: "Attendance percentage calculator",
-  description: "Calculate subject attendance from periods attended and periods conducted.",
+  description: "Free attendance calculator for subject-wise or overall percentages, with clear formulas and period-based examples.",
   alternates: { canonical: "/attendance-calculator" },
 };
 
