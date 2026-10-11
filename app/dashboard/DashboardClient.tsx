@@ -1192,10 +1192,10 @@ const emptyPlannerForecast: PlannerForecast = { upcoming: "", attending: "" };
 function parsePlannerCount(value: string): number | null {
   if (value.trim() === "") return null;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(0, Math.min(60, Math.trunc(parsed))) : null;
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null;
 }
 
-function normalizePlannerCount(value: string, maximum = 60): string {
+function normalizePlannerCount(value: string, maximum = Number.POSITIVE_INFINITY): string {
   if (value.trim() === "") return "";
   const parsed = Number(value);
   return Number.isFinite(parsed) ? String(Math.max(0, Math.min(maximum, Math.trunc(parsed)))) : "";
@@ -1257,7 +1257,7 @@ function PlannerView({ subjects, records, overallTarget }: {
   }
 
   function updatePlannedAttendance(value: string) {
-    const maximum = futureClasses ?? 60;
+    const maximum = futureClasses ?? Number.POSITIVE_INFINITY;
     updateForecast({ attending: normalizePlannerCount(value, maximum) });
   }
 
@@ -1302,11 +1302,11 @@ function PlannerView({ subjects, records, overallTarget }: {
         <div className="planner-control-row">
           <div className="planner-current"><span>Current {scope === "overall" ? "overall attendance" : "subject attendance"}</span><strong>{formatPercentage(current.percentage)}</strong><span>{current.attended} attended / {current.conducted} conducted periods</span></div>
           <label className="field-label planner-upcoming-field">Upcoming periods
-            <input type="number" min="0" max="60" placeholder="Enter a count" value={activeForecast.upcoming} onChange={(event) => updateUpcoming(event.target.value)}/>
+            <input type="number" min="0" placeholder="Enter a count" value={activeForecast.upcoming} onChange={(event) => updateUpcoming(event.target.value)}/>
             <small>Leave blank until you know how many periods to plan for.</small>
           </label>
           <label className="field-label planner-upcoming-field">Plan to attend
-            <input type="number" min="0" max={futureClasses ?? 60} placeholder="Optional" value={activeForecast.attending} disabled={futureClasses === null} onChange={(event) => updatePlannedAttendance(event.target.value)}/>
+            <input type="number" min="0" max={futureClasses ?? undefined} placeholder="Optional" value={activeForecast.attending} disabled={futureClasses === null} onChange={(event) => updatePlannedAttendance(event.target.value)}/>
             <small>Optional. Remaining periods count as missed in your plan.</small>
           </label>
         </div>
