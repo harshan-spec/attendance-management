@@ -817,8 +817,8 @@ function InternalMarksView({ subjects, onChange, onAddSubject }: { subjects: Sub
             const applicableKeys = markKeysForType(type);
             const result = calculateInternal(type, marks);
             const typeLabel = type === "theory-practices" ? "Theory & Practices" : type === "laboratory" ? "Laboratory" : "Theory";
-            const resultLabel = result.complete ? result.passed ? "Pass" : "Below pass mark" : result.entered ? "Provisional" : "No marks";
-            const resultStatus = result.complete ? result.passed ? "passed" : "failed" : result.entered ? "provisional" : "empty";
+            const resultLabel = result.complete ? result.passed ? "Pass" : "Fail" : null;
+            const resultStatus = result.passed ? "passed" : "failed";
             return <tr key={subject.id}>
               <th scope="row" className="internal-table-subject"><strong>{subject.name}</strong>{subject.code && <small>{subject.code}</small>}</th>
               <td><span className="internal-table-type">{typeLabel}</span></td>
@@ -835,7 +835,7 @@ function InternalMarksView({ subjects, onChange, onAddSubject }: { subjects: Sub
               })}
               <td className="internal-table-score-cell"><strong>{result.score === null ? "—" : `${result.score.toFixed(2)} / ${result.maximum}`}</strong><small>Pass mark: {result.passMark} / {result.maximum}</small></td>
               <td className="internal-table-percentage">{result.percentage === null ? "—" : `${result.percentage.toFixed(2)}%`}</td>
-              <td><span className={`internal-table-status ${resultStatus}`}>{resultLabel}</span></td>
+              <td>{resultLabel && <span className={`internal-table-status ${resultStatus}`}>{resultLabel}</span>}</td>
             </tr>;
           })}</tbody>
         </table>
