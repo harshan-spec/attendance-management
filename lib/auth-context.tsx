@@ -29,6 +29,7 @@ interface AuthContextValue {
   enterPreview: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string, phoneNumber: string, academicProfile: StudentAcademicProfile) => Promise<boolean>;
+  resendSignupConfirmation: (email: string) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   deleteAccount: (password: string) => Promise<void>;
@@ -186,6 +187,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return !data.session;
   }, []);
 
+  const resendSignupConfirmation = useCallback(async (email: string) => {
+    if (!isCollegeEmail(email)) throw new Error(COLLEGE_EMAIL_MESSAGE);
+    const { error } = await getSupabaseBrowserClient().auth.resend({
+      type: "signup",
+      email: email.trim().toLowerCase(),
+      options: { emailRedirectTo: new URL("/auth/callback", window.location.origin).toString() },
+    });
+    if (error) throw error;
+  }, []);
+
   const sendPasswordReset = useCallback(async (email: string) => {
     const supabase = getSupabaseBrowserClient();
     const redirectTo = new URL("/auth/recovery-callback", window.location.origin);
@@ -245,12 +256,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       enterPreview,
       signIn,
       signUp,
+      resendSignupConfirmation,
       sendPasswordReset,
       updatePassword,
       deleteAccount,
       signOut,
     }),
-    [user, ready, enterPreview, signIn, signUp, sendPasswordReset, updatePassword, deleteAccount, signOut],
+    [user, ready, enterPreview, signIn, signUp, resendSignupConfirmation, sendPasswordReset, updatePassword, deleteAccount, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

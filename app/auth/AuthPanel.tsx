@@ -22,7 +22,7 @@ const copy = {
 
 export function AuthPanel({ mode }: { mode: AuthMode }) {
   const router = useRouter();
-  const { user, ready, signIn, signUp, sendPasswordReset, updatePassword, enterPreview, supabaseConfigured } = useAttendlyAuth();
+  const { user, ready, signIn, signUp, resendSignupConfirmation, sendPasswordReset, updatePassword, enterPreview, supabaseConfigured } = useAttendlyAuth();
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
@@ -34,6 +34,13 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   const submissionPending = useRef(false);
   const signupSubmitted = useRef(false);
   const [signupComplete, setSignupComplete] = useState(false);
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const resendPending = useRef(false);
+  const failedSignupRetry = useRef<(() => Promise<boolean>) | null>(null);
+  const resendDeadline = useRef(0);
+  const [resending, setResending] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const resendCoolingDown = resendSeconds > 0;
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [recoveryVerified, setRecoveryVerified] = useState(false);
@@ -115,6 +122,58 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
     return () => controller.abort();
   }, [mode, signupStep, department, academicYear, studyYear, semester, section]);
 
+  useEffect(() => {
+    if (!resendCoolingDown) return;
+    const timer = window.setInterval(() => {
+      setResendSeconds(Math.max(0, Math.ceil((resendDeadline.current - Date.now()) / 1000)));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCoolingDown]);
+
+  function startResendCooldown() {
+    resendDeadline.current = Date.now() + 60_000;
+    setResendSeconds(60);
+  }
+
+  async function resendVerification() {
+    if (!confirmationEmail || resendPending.current || Date.now() < resendDeadline.current) return;
+    resendPending.current = true;
+    setResending(true);
+    setError("");
+    setSuccess("");
+    startResendCooldown();
+    try {
+      if (failedSignupRetry.current) {
+        let needsConfirmation = true;
+        try {
+          needsConfirmation = await failedSignupRetry.current();
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : "";
+          if (!/account already exists|user already registered/i.test(message)) throw caught;
+          await resendSignupConfirmation(confirmationEmail);
+        }
+        failedSignupRetry.current = null;
+        setSignupComplete(true);
+        if (!needsConfirmation) {
+          router.push("/dashboard");
+          return;
+        }
+      } else {
+        await resendSignupConfirmation(confirmationEmail);
+      }
+      setSuccess(`Verification email sent again to ${confirmationEmail}. Click the link in the latest email to verify your account. Check your Spam or Junk folder if you don’t see it in your inbox.`);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "The verification email could not be sent.";
+      setError(/rate.?limit|too many requests|request this after \d+ seconds/i.test(message)
+        ? "Email requests are temporarily limited. Wait before trying again, and check your inbox and Spam folder."
+        : "The verification email could not be sent. Wait one minute and use the resend button to try again.");
+    } finally {
+      startResendCooldown();
+      resendPending.current = false;
+      setResending(false);
+    }
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submissionPending.current || (mode === "signup" && signupSubmitted.current)) return;
@@ -159,10 +218,17 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           academicYearCode: selectedAcademicYear.value,
           collegeTimetableUrl,
         };
-        const needsConfirmation = await signUp(name.trim(), email.trim(), password, phoneNumber.trim(), academicProfile);
+        const signupName = name.trim();
+        const signupEmail = email.trim().toLowerCase();
+        const signupPhone = phoneNumber.trim();
+        failedSignupRetry.current = () => signUp(signupName, signupEmail, password, signupPhone, academicProfile);
+        const needsConfirmation = await failedSignupRetry.current();
+        failedSignupRetry.current = null;
         signupSubmitted.current = true;
         setSignupComplete(true);
         if (needsConfirmation) {
+          setConfirmationEmail(email.trim().toLowerCase());
+          startResendCooldown();
           setSuccess(`Verification email sent to ${email.trim()}. Click the link in that email to verify your account. Check your Spam or Junk folder if you don’t see it in your inbox.`);
         } else {
           router.push("/dashboard");
@@ -193,6 +259,13 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
       const requestingEmail = mode === "signup" || mode === "forgot";
       const emailRateLimited = /rate.?limit|too many requests|request this after \d+ seconds/i.test(message);
       const emailDeliveryFailed = /error sending .*email|failed to send .*email/i.test(message);
+      if (mode === "signup" && emailDeliveryFailed) {
+        signupSubmitted.current = true;
+        setConfirmationEmail(email.trim().toLowerCase());
+        startResendCooldown();
+      } else if (mode === "signup") {
+        failedSignupRetry.current = null;
+      }
       setError(requestingEmail && emailRateLimited
         ? "Wait at least a minute before requesting another email for this address. Then check your inbox and spam folder."
         : requestingEmail && emailDeliveryFailed
@@ -306,15 +379,21 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
 
             {error && <p className="form-message form-error" role="alert">{error}</p>}
             {success && <p className="form-message form-success" role="status">{success}</p>}
+            {mode === "signup" && confirmationEmail && <div className="signup-resend">
+              <p>Haven’t received the email? Check Spam or Junk, then request another verification email.</p>
+              <button className="button button-outline" type="button" onClick={resendVerification} disabled={resending || resendCoolingDown}>
+                {resending ? "Sending verification email…" : resendCoolingDown ? `Resend available in ${resendSeconds}s` : "Resend verification email"}
+              </button>
+            </div>}
             {mode === "update" && recoveryChecking && <p className="form-message" role="status">Verifying your secure email recovery link…</p>}
             {mode === "update" && ready && !recoveryChecking && (!user || !recoveryVerified) && <p className="form-message form-error" role="alert">This recovery link is invalid or expired. Request a new verification link to continue.</p>}
             {!supabaseConfigured && (
               <p className="auth-preview-note"><span className="mini-info">i</span> {mode === "update" ? "Connect Supabase Auth before verifying a recovery link." : "Preview mode is on. Real accounts activate when Supabase is connected."}</p>
             )}
             {mode === "signup" ? signupStep === 1 ? <button className="button button-dark auth-submit" type="submit" disabled={busy}>Continue <ArrowRight /></button> : <div className="signup-step-actions">
-              <button className="button button-outline" type="button" disabled={busy || signupComplete} onClick={() => { setError(""); setSignupStep(1); }}>Back</button>
-              <button className="button button-dark" type="submit" disabled={busy || signupComplete || !supabaseConfigured || !department || !academicYear || !studyYear || !semester}>
-                {signupComplete ? "Verification email sent" : busy ? "Creating account…" : "Create account"}{!busy && !signupComplete && <ArrowRight />}
+              <button className="button button-outline" type="button" disabled={busy || signupComplete || !!confirmationEmail} onClick={() => { setError(""); setSignupStep(1); }}>Back</button>
+              <button className="button button-dark" type="submit" disabled={busy || signupComplete || !!confirmationEmail || !supabaseConfigured || !department || !academicYear || !studyYear || !semester}>
+                {signupComplete ? "Verification email sent" : confirmationEmail ? "Email not sent" : busy ? "Creating account…" : "Create account"}{!busy && !signupComplete && !confirmationEmail && <ArrowRight />}
               </button>
             </div> : <button className="button button-dark auth-submit" type="submit" disabled={busy || !supabaseConfigured || (mode === "update" && (!ready || !user || !recoveryVerified || recoveryChecking))}>
               {busy ? "Please wait…" : mode === "login" ? "Sign in" : mode === "forgot" ? "Send reset link" : "Save new password"}

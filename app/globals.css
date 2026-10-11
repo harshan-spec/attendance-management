@@ -129,6 +129,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .signup-profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px 12px; }
 .signup-profile-grid .signup-department-field { grid-column: 1 / -1; }
 .signup-step-actions { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 10px; }
+.signup-resend { grid-column: 1 / -1; display: grid; gap: 10px; }
+.signup-resend p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.signup-resend .button { width: 100%; white-space: normal; }
 .signup-step-actions .button-dark { min-width: 175px; margin-left: auto; }
 @keyframes signup-status-spin { to { transform: rotate(360deg); } }
 
