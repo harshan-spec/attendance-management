@@ -12,6 +12,7 @@ import {
 import type { User } from "@supabase/supabase-js";
 import type { StudentAcademicProfile } from "@/lib/svce-timetable";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { COLLEGE_EMAIL_MESSAGE, isCollegeEmail } from "@/lib/college-email";
 
 export interface AttendlyUser {
   id: string;
@@ -161,10 +162,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (name: string, email: string, password: string, phoneNumber: string, academicProfile: StudentAcademicProfile) => {
+    if (!isCollegeEmail(email)) throw new Error(COLLEGE_EMAIL_MESSAGE);
     const supabase = getSupabaseBrowserClient();
     const redirectTo = new URL("/auth/callback", window.location.origin);
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: email.trim().toLowerCase(),
       password,
       options: {
         data: { full_name: name, phone_number: phoneNumber, academic_profile: academicProfile },

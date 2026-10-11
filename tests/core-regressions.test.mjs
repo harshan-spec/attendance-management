@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as attendance from "../lib/attendance.ts";
 import { safeLoginRedirect } from "../lib/auth-redirect.ts";
+import { isCollegeEmail } from "../lib/college-email.ts";
+
+test("signup accepts only the exact college domain", () => {
+  for (const email of ["student@svce.ac.in", "STUDENT@SVCE.AC.IN", " student@svce.ac.in "]) assert.equal(isCollegeEmail(email), true);
+  for (const email of ["student@gmail.com", "student@svce.ac.in.evil.com", "student@evil-svce.ac.in", "student@dept.svce.ac.in", "student@@svce.ac.in", "@svce.ac.in", "student name@svce.ac.in", ""]) assert.equal(isCollegeEmail(email), false);
+});
 
 test("overall attendance weights periods and keeps subject totals separate", () => {
   const records = [

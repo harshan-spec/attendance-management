@@ -7,6 +7,7 @@ import { useAttendlyAuth } from "@/lib/auth-context";
 import { SVCE_FALLBACK_OPTIONS, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
 import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
 import { safeLoginRedirect } from "@/lib/auth-redirect";
+import { COLLEGE_EMAIL_MESSAGE, isCollegeEmail } from "@/lib/college-email";
 
 type AuthMode = "login" | "signup" | "forgot" | "update";
 
@@ -117,6 +118,10 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
     setSuccess("");
     setBusy(true);
     try {
+      if (mode === "signup" && !isCollegeEmail(email)) {
+        setError(COLLEGE_EMAIL_MESSAGE);
+        return;
+      }
       if (mode === "signup" && signupStep === 1) {
         if (password !== confirmPassword) {
           setError("Those passwords don’t match.");
@@ -273,6 +278,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
               {mode !== "update" && <label className="field-label">
                 Email address
                 <input autoComplete="email" inputMode="email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@svce.ac.in" />
+                {mode === "signup" && <small>Sign up using your @svce.ac.in college email only.</small>}
               </label>}
               {mode !== "forgot" && <div className="field-label">
                 <span className="label-row"><label htmlFor="auth-password">{mode === "update" ? "New password" : "Password"}</label>{mode === "login" && <Link href="/forgot-password">Forgot password?</Link>}</span>
