@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAttendlyAuth } from "@/lib/auth-context";
 import { SVCE_FALLBACK_OPTIONS, type StudentAcademicProfile, type SvceTimetableOptions } from "@/lib/svce-timetable";
 import { PublicLegalLinks } from "@/app/legal/PublicLegalLinks";
@@ -31,6 +31,9 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const submissionPending = useRef(false);
+  const signupSubmitted = useRef(false);
+  const [signupComplete, setSignupComplete] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [recoveryVerified, setRecoveryVerified] = useState(false);
@@ -114,6 +117,8 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submissionPending.current || (mode === "signup" && signupSubmitted.current)) return;
+    submissionPending.current = true;
     setError("");
     setSuccess("");
     setBusy(true);
@@ -155,8 +160,10 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           collegeTimetableUrl,
         };
         const needsConfirmation = await signUp(name.trim(), email.trim(), password, phoneNumber.trim(), academicProfile);
+        signupSubmitted.current = true;
+        setSignupComplete(true);
         if (needsConfirmation) {
-          setSuccess("Click the verification link sent to your email to verify your account and open your Attendly workspace.");
+          setSuccess(`Verification email sent to ${email.trim()}. Click the link in that email to verify your account. Check your Spam or Junk folder if you don’t see it in your inbox.`);
         } else {
           router.push("/dashboard");
         }
@@ -192,6 +199,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           ? "Attendly could not send the email just now. Wait a minute and try again; if it continues, email delivery may be temporarily unavailable."
           : message);
     } finally {
+      submissionPending.current = false;
       setBusy(false);
     }
   }
@@ -304,9 +312,9 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
               <p className="auth-preview-note"><span className="mini-info">i</span> {mode === "update" ? "Connect Supabase Auth before verifying a recovery link." : "Preview mode is on. Real accounts activate when Supabase is connected."}</p>
             )}
             {mode === "signup" ? signupStep === 1 ? <button className="button button-dark auth-submit" type="submit" disabled={busy}>Continue <ArrowRight /></button> : <div className="signup-step-actions">
-              <button className="button button-outline" type="button" onClick={() => { setError(""); setSignupStep(1); }}>Back</button>
-              <button className="button button-dark" type="submit" disabled={busy || !supabaseConfigured || !department || !academicYear || !studyYear || !semester}>
-                {busy ? "Please wait…" : "Create account"}{!busy && <ArrowRight />}
+              <button className="button button-outline" type="button" disabled={busy || signupComplete} onClick={() => { setError(""); setSignupStep(1); }}>Back</button>
+              <button className="button button-dark" type="submit" disabled={busy || signupComplete || !supabaseConfigured || !department || !academicYear || !studyYear || !semester}>
+                {signupComplete ? "Verification email sent" : busy ? "Creating account…" : "Create account"}{!busy && !signupComplete && <ArrowRight />}
               </button>
             </div> : <button className="button button-dark auth-submit" type="submit" disabled={busy || !supabaseConfigured || (mode === "update" && (!ready || !user || !recoveryVerified || recoveryChecking))}>
               {busy ? "Please wait…" : mode === "login" ? "Sign in" : mode === "forgot" ? "Send reset link" : "Save new password"}
