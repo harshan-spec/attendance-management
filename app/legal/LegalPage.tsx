@@ -13,7 +13,7 @@ export function LegalPage({ title, summary, children }: { title: string; summary
       <p className="legal-summary">{summary}</p>
       {children}
       <nav className="legal-page-links" aria-label="Legal and support pages">
-        <Link href="/contact">Contact</Link>
+        <Link href="/attendance-calculator">Calculator</Link><Link href="/about">About</Link><Link href="/guides">Guide</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/contact">Contact</Link>
       </nav>
     </article>
   </main>;

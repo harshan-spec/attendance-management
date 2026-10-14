@@ -35,7 +35,7 @@ export function AttendanceCalculator() {
 
   return <div className="calculator-page">
     <header className="calculator-header">
-      <Link href="/login" className="brand"><span className="brand-mark"><Icon name="check"/></span><span>attendly<span className="brand-period">.</span></span></Link>
+      <Link href="/attendance-calculator" className="brand"><span className="brand-mark"><Icon name="check"/></span><span>attendly<span className="brand-period">.</span></span></Link>
       <nav aria-label="Public navigation"><Link href="/attendance-calculator">Calculator</Link><Link href="/login">Sign in <Icon name="external"/></Link></nav>
     </header>
     <main className="calculator-main">
@@ -77,7 +77,7 @@ export function AttendanceCalculator() {
         </div>
         <p className="calculator-disclaimer">Attendly is an independent planning tool, not your college’s official attendance record. Check important totals and eligibility with your institution.</p>
       </section>
-      <CalculatorAd />
+      <section className="card calculator-guide"><h2>Plan your next week with clearer numbers</h2><p>Understand recovery periods, how future classes change both totals, and why a forecast must follow your actual timetable.</p><Link href="/guides">Read the attendance planning guide →</Link></section><CalculatorAd />
       <section className="calculator-faq" aria-labelledby="calculator-faq-title">
         <h2 id="calculator-faq-title">A few useful details</h2>
         <details><summary>How is overall attendance different?</summary><p>Overall attendance uses the sum of attended periods across all subjects divided by the sum of conducted periods. It is not the average of your subject percentages.</p></details>
